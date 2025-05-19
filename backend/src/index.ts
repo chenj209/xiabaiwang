@@ -1,0 +1,139 @@
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import { Room, Player, Question } from './types';
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+    cors: {
+        origin: "http://localhost:3000",
+        methods: ["GET", "POST"]
+    }
+});
+
+app.use(cors());
+app.use(express.json());
+
+// 游戏状态
+const gameState: { rooms: { [key: string]: Room } } = {
+    rooms: {}
+};
+
+// 示例题目
+const sampleQuestions: Question[] = [
+    {
+        id: '1',
+        content: '为什么天空是蓝色的？',
+        answer: '因为大气层中的气体分子会散射太阳光，而蓝光的散射最强。'
+    },
+    {
+        id: '2',
+        content: '为什么海水是咸的？',
+        answer: '因为河流将陆地上的盐分带入海洋，经过数百万年的积累。'
+    }
+];
+
+// Socket.IO 连接处理
+io.on('connection', (socket) => {
+    console.log('User connected:', socket.id);
+
+    // 创建房间
+    socket.on('createRoom', (maxPlayers: number) => {
+        const roomId = Math.random().toString(36).substring(7);
+        const room: Room = {
+            id: roomId,
+            players: [],
+            maxPlayers,
+            status: 'waiting',
+            round: 0
+        };
+        gameState.rooms[roomId] = room;
+        socket.join(roomId);
+        socket.emit('roomCreated', { id: roomId, room });
+    });
+
+    // 加入房间
+    socket.on('joinRoom', (data: { roomId: string, playerName: string }) => {
+        const { roomId, playerName } = data;
+        const room = gameState.rooms[roomId];
+        
+        if (!room) {
+            socket.emit('error', '房间不存在');
+            return;
+        }
+        
+        if (room.players.length >= room.maxPlayers) {
+            socket.emit('error', '房间已满');
+            return;
+        }
+        if (room.players.find(p => p.name === playerName)) {
+            socket.emit('error', '该玩家已在房间中');
+            return;
+        }
+        const player: Player = {
+            id: socket.id,
+            name: playerName,
+            role: 'liar', // 默认角色，后续会随机分配
+            score: 0,
+            hasUsedHonestButton: false
+        };
+        room.players.push(player);
+        socket.join(roomId);
+        io.to(roomId).emit('playerJoined', room);
+    });
+
+    // 开始游戏
+    socket.on('startGame', (roomId: string) => {
+        const room = gameState.rooms[roomId];
+        if (room) {
+            room.status = 'playing';
+            // 随机选择题目
+            const randomQuestion = sampleQuestions[Math.floor(Math.random() * sampleQuestions.length)];
+            room.currentQuestion = randomQuestion;
+            
+            // 随机分配角色
+            const players = room.players;
+            const smartIndex = Math.floor(Math.random() * players.length);
+            const honestIndex = (smartIndex + 1) % players.length;
+            
+            players[smartIndex].role = 'smart';
+            players[honestIndex].role = 'honest';
+            
+            io.to(roomId).emit('gameStarted', {
+                room,
+                question: randomQuestion
+            });
+        }
+    });
+
+    // 使用老实人按钮
+    socket.on('useHonestButton', (roomId: string) => {
+        const room = gameState.rooms[roomId];
+        if (room) {
+            const player = room.players.find(p => p.id === socket.id);
+            if (player && player.role === 'honest' && !player.hasUsedHonestButton) {
+                player.hasUsedHonestButton = true;
+                socket.emit('showAnswer', room.currentQuestion?.answer);
+            }
+        }
+    });
+
+    // 断开连接
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+        // 清理玩家数据
+        Object.values(gameState.rooms).forEach(room => {
+            room.players = room.players.filter(p => p.id !== socket.id);
+            if (room.players.length === 0) {
+                delete gameState.rooms[room.id];
+            }
+        });
+    });
+});
+
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
