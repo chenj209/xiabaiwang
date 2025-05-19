@@ -23,8 +23,6 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       setRoomId(savedRoomId);
       setPlayerName(savedPlayerName);
       setActiveTab(1); // Switch to join room tab
-      // Automatically attempt to reconnect
-      connectToRoom(savedRoomId, savedPlayerName);
     }
 
     return () => {
