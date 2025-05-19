@@ -21,6 +21,11 @@ app.use(express.json());
 const imagesPath = path.join(__dirname, '../../images');
 app.use('/images', express.static(imagesPath));
 
+app.use(express.static(path.join(__dirname, '../../frontend/build')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../frontend/build', 'index.html'));
+});
+
 // 游戏状态
 const gameState: { rooms: { [key: string]: Room } } = {
     rooms: {}
