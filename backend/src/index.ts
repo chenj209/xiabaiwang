@@ -117,11 +117,19 @@ io.on('connection', (socket) => {
                 player.hasUsedHonestButton = true;
                 const endTime = Date.now() + 30000;
                 room.answerReveal = { showing: true, endTime };
-                io.to(roomId).emit('answerReveal', { showing: true, endTime, answer: room.currentQuestion?.answer });
+                // 给老实人自己发带答案
+                socket.emit('answerReveal', { showing: true, endTime, answer: room.currentQuestion?.answer });
+                // 给其他人发不带答案
+                room.players.forEach(p => {
+                    if (p.id !== socket.id) {
+                        io.to(p.id).emit('answerReveal', { showing: true, endTime });
+                    }
+                });
                 setTimeout(() => {
                     if (room.answerReveal?.showing) {
                         room.answerReveal = { showing: false, endTime: 0 };
                         io.to(roomId).emit('answerReveal', { showing: false, endTime: 0 });
+                        io.to(roomId).emit('playerJoined', room);
                     }
                 }, 30000);
             }
@@ -132,6 +140,8 @@ io.on('connection', (socket) => {
     socket.on('startVoting', (roomId: string) => {
         const room = gameState.rooms[roomId];
         if (room && room.status === 'playing' && !room.answerReveal?.showing) {
+            const honestPlayer = room.players.find(p => p.role === 'honest');
+            if (!honestPlayer || !honestPlayer.hasUsedHonestButton) return; // 老实人没用过按钮不能投票
             const smartPlayer = room.players.find(p => p.role === 'smart');
             if (smartPlayer && smartPlayer.id === socket.id) {
                 room.status = 'voting';

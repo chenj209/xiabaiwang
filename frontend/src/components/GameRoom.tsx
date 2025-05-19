@@ -115,13 +115,36 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
 
   const me = room.players.find(p => p.id === playerId);
   const isSmart = me?.role === 'smart';
-  const canStartVoting = !answerReveal.showing;
+  const honestPlayer = room.players.find(p => p.role === 'honest');
+  const canStartVoting = phase === 'playing' && !answerReveal.showing && honestPlayer?.hasUsedHonestButton;
+
+  // 你的身份
+  let myRoleLabel = '';
+  if (me) {
+    if (me.role === 'smart') {
+      myRoleLabel = '你是大聪明';
+    } else if (me.role === 'honest') {
+      myRoleLabel = '你是老实人';
+    } else {
+      myRoleLabel = '你是瞎掰人';
+    }
+  }
+  // 本轮大聪明
+  const smartPlayer = room.players.find(p => p.role === 'smart');
 
   return (
     <Box>
       <Typography variant="h5" gutterBottom>
         房间号: {roomId}
       </Typography>
+      <Typography variant="h6" color="primary" gutterBottom>
+        {myRoleLabel}
+      </Typography>
+      {smartPlayer && (
+        <Typography color="secondary" gutterBottom>
+          本轮大聪明：{smartPlayer.name}
+        </Typography>
+      )}
       {phase === 'waiting' && (
         <Box>
           <Typography variant="h6" gutterBottom>
@@ -144,8 +167,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
           </Paper>
           {((phase === 'playing' || phase === 'voting') && answerReveal.showing) && (
             <Paper sx={{ p: 2, mt: 2, bgcolor: 'primary.light' }}>
-              <Typography>答案：{answerReveal.answer}</Typography>
-              <Typography color="secondary">倒计时：{countdown} 秒</Typography>
+              {answerReveal.answer ? (
+                <>
+                  <Typography>答案：{answerReveal.answer}</Typography>
+                  <Typography color="secondary">倒计时：{countdown} 秒</Typography>
+                </>
+              ) : (
+                <Typography color="secondary">老实人查看答案中，倒计时：{countdown} 秒</Typography>
+              )}
             </Paper>
           )}
           {me && me.role === 'honest' && phase === 'playing' && !answerReveal.showing && (
@@ -169,8 +198,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
             <Typography variant="h6">玩家列表：</Typography>
             {room.players.map(player => (
               <Typography key={player.id}>
-                {player.name} - {player.role} - {player.id}
-                {player.id === playerId && '（你）'}
+                {player.name} - 分数：{player.score} {player.id === playerId && '（你）'}
               </Typography>
             ))}
           </Box>
