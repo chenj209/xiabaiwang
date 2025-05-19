@@ -28,6 +28,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const connectToRoom = (roomId: string, playerName: string, isNewRoom: boolean = false) => {
     setIsConnecting(true);
     setError(null);
+
     const socket = io('http://8.148.30.163:3001', {
       transports: ['polling'],
       withCredentials: true,
@@ -37,42 +38,48 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       forceNew: true,
       autoConnect: true
     });
-    
+
+    // Set up all event listeners before connecting
     socket.on('connect_error', (error) => {
       console.error('Connection error:', error);
       setError('连接服务器失败，请稍后重试');
       setIsConnecting(false);
+      socket.disconnect();
     });
 
     socket.on('connect', () => {
       console.log('Connected to server');
       if (isNewRoom) {
+        console.log('Creating new room...');
         socket.emit('createRoom', maxPlayers);
       } else {
+        console.log('Joining existing room...');
         socket.emit('joinRoom', { roomId, playerName });
       }
     });
 
     socket.on('roomCreated', (data) => {
+      console.log('Room created:', data);
       socket.emit('joinRoom', { roomId: data.id, playerName });
-      socket.on('playerJoined', (room) => {
-        localStorage.setItem('currentRoomId', room.id);
-        localStorage.setItem('currentPlayerName', playerName);
-        onRoomCreated(room.id, playerName, socket);
-      });
     });
 
     socket.on('playerJoined', (room) => {
+      console.log('Player joined:', room);
       localStorage.setItem('currentRoomId', room.id);
       localStorage.setItem('currentPlayerName', playerName);
+      setIsConnecting(false);
       onRoomCreated(room.id, playerName, socket);
     });
 
     socket.on('error', (errorMessage: string) => {
+      console.error('Server error:', errorMessage);
       setError(errorMessage);
-      socket.disconnect();
       setIsConnecting(false);
+      socket.disconnect();
     });
+
+    // Connect to the server
+    socket.connect();
   };
 
   const handleCreateRoom = () => {
