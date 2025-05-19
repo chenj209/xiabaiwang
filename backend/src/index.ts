@@ -10,13 +10,19 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-        credentials: false
+        origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        credentials: true,
+        allowedHeaders: ["Content-Type", "Authorization"]
     }
 });
 
-app.use(cors());
+app.use(cors({
+    origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json());
 
 const imagesPath = path.join(__dirname, '../../images');
