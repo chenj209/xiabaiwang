@@ -188,9 +188,21 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // Check if a player with this socket ID already exists
+        const existingPlayerWithSocketId = room.players.find(p => p.id === socket.id);
+        if (existingPlayerWithSocketId) {
+            // Update the existing player's ID
+            existingPlayerWithSocketId.id = newPlayerId;
+            playerSessions[newPlayerId] = { playerId: newPlayerId, roomId, playerName };
+            socket.join(roomId);
+            socket.emit('playerId', newPlayerId);
+            io.to(roomId).emit('playerJoined', room);
+            return;
+        }
+
         // Create new player
         const player: Player = {
-            id: socket.id,
+            id: newPlayerId,  // Use newPlayerId instead of socket.id
             name: playerName,
             role: 'liar',
             score: 0,
@@ -327,7 +339,11 @@ io.on('connection', (socket) => {
         Object.values(gameState.rooms).forEach(room => {
             const player = room.players.find(p => p.id === socket.id);
             if (player) {
-                player.id = 'disconnected';
+                // Keep the player's persistent ID
+                const session = Object.entries(playerSessions).find(([_, s]) => s.playerId === player.id);
+                if (session) {
+                    player.id = session[0];  // Use the persistent ID
+                }
             }
         });
     });
