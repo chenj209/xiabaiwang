@@ -13,15 +13,10 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Use the current window location to determine the backend URL
-  const backendUrl = window.location.protocol === 'https:' 
-    ? `https://${window.location.hostname}:3001`
-    : `http://${window.location.hostname}:3001`;
-
   const handleCreateRoom = () => {
     if (playerName.trim()) {
       setError(null);
-      const socket = io(backendUrl, {
+      const socket = io('http://8.148.30.163:3001', {
         transports: ['polling'],
         withCredentials: true,
         reconnectionAttempts: 5,
@@ -57,7 +52,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const handleJoinRoom = () => {
     if (playerName.trim() && roomId.trim()) {
       setError(null);
-      const socket = io(backendUrl, {
+      const socket = io('http://8.148.30.163:3001', {
         transports: ['polling'],
         withCredentials: true,
         reconnectionAttempts: 5,
