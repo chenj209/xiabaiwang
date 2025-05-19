@@ -13,6 +13,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   // Check for existing room on component mount and auto-reconnect
   useEffect(() => {
@@ -25,13 +26,24 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       // Automatically attempt to reconnect
       connectToRoom(savedRoomId, savedPlayerName);
     }
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
   }, []);
 
   const connectToRoom = (roomId: string, playerName: string, isNewRoom: boolean = false) => {
     setIsConnecting(true);
     setError(null);
 
-    const socket = io('http://8.148.30.163:3001', {
+    // Disconnect existing socket if any
+    if (socket) {
+      socket.disconnect();
+    }
+
+    const newSocket = io('http://8.148.30.163:3001', {
       transports: ['polling'],
       withCredentials: true,
       reconnectionAttempts: 5,
@@ -41,54 +53,57 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       autoConnect: true
     });
 
+    setSocket(newSocket);
+
     // Set up all event listeners before connecting
-    socket.on('connect_error', (error) => {
+    newSocket.on('connect_error', (error) => {
       console.error('Connection error:', error);
       setError('连接服务器失败，请稍后重试');
       setIsConnecting(false);
-      socket.disconnect();
+      newSocket.disconnect();
     });
 
-    socket.on('connect', () => {
+    newSocket.on('connect', () => {
       console.log('Connected to server');
       if (isNewRoom) {
         console.log('Creating new room...');
-        socket.emit('createRoom', maxPlayers);
+        newSocket.emit('createRoom', maxPlayers);
       } else {
         console.log('Joining existing room...');
         // Get the saved player ID if it exists
         const savedPlayerId = localStorage.getItem(`playerId_${roomId}`);
-        socket.emit('joinRoom', { roomId, playerName, playerId: savedPlayerId });
+        console.log('Attempting to join with playerId:', savedPlayerId);
+        newSocket.emit('joinRoom', { roomId, playerName, playerId: savedPlayerId });
       }
     });
 
-    socket.on('roomCreated', (data) => {
+    newSocket.on('roomCreated', (data) => {
       console.log('Room created:', data);
-      socket.emit('joinRoom', { roomId: data.id, playerName });
+      newSocket.emit('joinRoom', { roomId: data.id, playerName });
     });
 
-    socket.on('playerJoined', (room) => {
+    newSocket.on('playerJoined', (room) => {
       console.log('Player joined:', room);
       localStorage.setItem('currentRoomId', room.id);
       localStorage.setItem('currentPlayerName', playerName);
       setIsConnecting(false);
-      onRoomCreated(room.id, playerName, socket);
+      onRoomCreated(room.id, playerName, newSocket);
     });
 
-    socket.on('playerId', (newPlayerId: string) => {
+    newSocket.on('playerId', (newPlayerId: string) => {
       console.log('Received player ID:', newPlayerId);
       localStorage.setItem(`playerId_${roomId}`, newPlayerId);
     });
 
-    socket.on('error', (errorMessage: string) => {
+    newSocket.on('error', (errorMessage: string) => {
       console.error('Server error:', errorMessage);
       setError(errorMessage);
       setIsConnecting(false);
-      socket.disconnect();
+      newSocket.disconnect();
     });
 
     // Connect to the server
-    socket.connect();
+    newSocket.connect();
   };
 
   const handleCreateRoom = () => {
