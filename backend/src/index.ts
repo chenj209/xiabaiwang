@@ -294,6 +294,56 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 开始下一局游戏
+    socket.on('nextGame', (roomId: string) => {
+        const room = gameState.rooms[roomId];
+        if (room) {
+            // 重置房间状态
+            room.status = 'playing';
+            room.round += 1;
+            room.voteResult = undefined;
+            room.answerReveal = undefined;
+
+            // 重置玩家状态
+            room.players.forEach(player => {
+                player.hasUsedHonestButton = false;
+            });
+
+            // 随机选择新的图片题目
+            const faceDir = path.join(__dirname, '../../images/face');
+            const backDir = path.join(__dirname, '../../images/back');
+            const files = fs.readdirSync(faceDir).filter(f => f.endsWith('.png'));
+            if (files.length === 0) {
+                socket.emit('error', '没有可用的题目图片');
+                return;
+            }
+            const randomFile = files[Math.floor(Math.random() * files.length)];
+            const question = {
+                id: randomFile,
+                content: `/images/face/${randomFile}`,
+                answer: `/images/back/${randomFile}`
+            };
+            room.currentQuestion = question;
+
+            // 重新随机分配角色
+            const players = room.players;
+            players.forEach(p => p.role = 'liar');
+            const smartIndex = Math.floor(Math.random() * players.length);
+            let honestIndex = Math.floor(Math.random() * players.length);
+            while (honestIndex === smartIndex && players.length > 1) {
+                honestIndex = Math.floor(Math.random() * players.length);
+            }
+            players[smartIndex].role = 'smart';
+            players[honestIndex].role = 'honest';
+
+            // 通知所有玩家新游戏开始
+            io.to(roomId).emit('nextGameStarted', {
+                room,
+                question
+            });
+        }
+    });
+
     // 断开连接
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
