@@ -9,6 +9,9 @@ import path from 'path';
 const app = express();
 const httpServer = createServer(app);
 
+// Add player session store
+const playerSessions: { [key: string]: { playerId: string, roomId: string, playerName: string } } = {};
+
 // Add request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
@@ -87,6 +90,23 @@ const sampleQuestions: Question[] = [
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
+    // Handle reconnection
+    socket.on('reconnect', (data: { playerId: string }) => {
+        const session = playerSessions[data.playerId];
+        if (session) {
+            const room = gameState.rooms[session.roomId];
+            if (room) {
+                // Update the player's socket ID
+                const player = room.players.find(p => p.id === session.playerId);
+                if (player) {
+                    player.id = socket.id;
+                    socket.join(session.roomId);
+                    io.to(session.roomId).emit('playerJoined', room);
+                }
+            }
+        }
+    });
+
     // 创建房间
     socket.on('createRoom', (maxPlayers: number) => {
         const roomId = Math.random().toString(36).substring(7);
@@ -103,8 +123,8 @@ io.on('connection', (socket) => {
     });
 
     // 加入房间
-    socket.on('joinRoom', (data: { roomId: string, playerName: string }) => {
-        const { roomId, playerName } = data;
+    socket.on('joinRoom', (data: { roomId: string, playerName: string, playerId?: string }) => {
+        const { roomId, playerName, playerId } = data;
         const room = gameState.rooms[roomId];
         
         if (!room) {
@@ -116,19 +136,36 @@ io.on('connection', (socket) => {
             socket.emit('error', '房间已满');
             return;
         }
+
+        // Check if player is reconnecting
+        if (playerId && playerSessions[playerId]) {
+            const existingPlayer = room.players.find(p => p.id === playerId);
+            if (existingPlayer) {
+                existingPlayer.id = socket.id;
+                socket.join(roomId);
+                io.to(roomId).emit('playerJoined', room);
+                return;
+            }
+        }
+
+        // New player joining
         if (room.players.find(p => p.name === playerName)) {
             socket.emit('error', '该玩家已在房间中');
             return;
         }
+
+        const newPlayerId = playerId || Math.random().toString(36).substring(7);
         const player: Player = {
-            id: socket.id,
+            id: newPlayerId,
             name: playerName,
-            role: 'liar', // 默认角色，后续会随机分配
+            role: 'liar',
             score: 0,
             hasUsedHonestButton: false
         };
         room.players.push(player);
+        playerSessions[newPlayerId] = { playerId: newPlayerId, roomId, playerName };
         socket.join(roomId);
+        socket.emit('playerId', newPlayerId);
         io.to(roomId).emit('playerJoined', room);
     });
 
@@ -228,11 +265,11 @@ io.on('connection', (socket) => {
     // 断开连接
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        // 清理玩家数据
+        // Don't remove player data on disconnect, only update socket ID
         Object.values(gameState.rooms).forEach(room => {
-            room.players = room.players.filter(p => p.id !== socket.id);
-            if (room.players.length === 0) {
-                delete gameState.rooms[room.id];
+            const player = room.players.find(p => p.id === socket.id);
+            if (player) {
+                player.id = 'disconnected';
             }
         });
     });

@@ -5,7 +5,6 @@ import { Socket } from 'socket.io-client';
 interface GameRoomProps {
   roomId: string;
   playerName: string;
-  playerId: string;
   socket: Socket;
 }
 
@@ -37,7 +36,7 @@ const backendUrl = window.location.protocol === 'https:'
   ? `https://${window.location.hostname}:3001`
   : `http://${window.location.hostname}:3001`;
 
-const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socket }) => {
+const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const [room, setRoom] = useState<Room | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [answer, setAnswer] = useState('');
@@ -46,29 +45,46 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
   const [voteResult, setVoteResult] = useState<{ voterId: string; targetId: string } | null>(null);
   const [answerReveal, setAnswerReveal] = useState<{ showing: boolean; endTime: number; answer?: string }>({ showing: false, endTime: 0 });
   const [countdown, setCountdown] = useState<number>(0);
+  const [playerId, setPlayerId] = useState<string>(() => {
+    // Try to get existing player ID from localStorage
+    return localStorage.getItem(`playerId_${roomId}`) || '';
+  });
 
   useEffect(() => {
+    // Join room with existing player ID if available
+    socket.emit('joinRoom', { roomId, playerName, playerId });
+
+    socket.on('playerId', (newPlayerId: string) => {
+      setPlayerId(newPlayerId);
+      localStorage.setItem(`playerId_${roomId}`, newPlayerId);
+    });
+
     socket.on('playerJoined', (updatedRoom: Room) => {
       setRoom(updatedRoom);
       setPhase(updatedRoom.status as any);
     });
+
     socket.on('gameStarted', (data: { room: Room, question: Question }) => {
       setRoom(data.room);
       setPhase('playing');
     });
+
     socket.on('showAnswer', (answer: string) => {
       setAnswer(answer);
       setShowAnswer(true);
       setTimeout(() => setShowAnswer(false), 30000);
     });
+
     socket.on('votingStarted', ({ room }) => {
       setRoom(room);
       setPhase('voting');
     });
+
     socket.on('voteResult', (result: { voterId: string; targetId: string }) => {
       setVoteResult(result);
       setPhase('ended');
     });
+
     socket.on('answerReveal', (data: { showing: boolean; endTime: number; answer?: string }) => {
       setAnswerReveal(data);
       if (data.showing && data.endTime) {
@@ -84,10 +100,26 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
         setCountdown(0);
       }
     });
+
+    // Handle reconnection
+    socket.on('connect', () => {
+      if (playerId) {
+        socket.emit('reconnect', { playerId });
+      }
+    });
+
     return () => {
-      // 不断开socket
+      // Clean up event listeners
+      socket.off('playerId');
+      socket.off('playerJoined');
+      socket.off('gameStarted');
+      socket.off('showAnswer');
+      socket.off('votingStarted');
+      socket.off('voteResult');
+      socket.off('answerReveal');
+      socket.off('connect');
     };
-  }, [socket]);
+  }, [socket, roomId, playerName, playerId]);
 
   const handleStartGame = () => {
     socket.emit('startGame', roomId);
