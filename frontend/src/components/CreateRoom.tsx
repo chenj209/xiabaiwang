@@ -22,13 +22,17 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     if (playerName.trim()) {
       setError(null);
       const socket = io(backendUrl, {
-        transports: ['polling', 'websocket'],
+        transports: ['polling'],
         withCredentials: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         timeout: 20000,
         forceNew: true,
-        autoConnect: true
+        autoConnect: true,
+        path: '/socket.io/',
+        query: {
+          t: Date.now()  // Add timestamp to prevent caching
+        }
       });
       
       socket.on('connect_error', (error) => {
@@ -58,13 +62,17 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     if (playerName.trim() && roomId.trim()) {
       setError(null);
       const socket = io(backendUrl, {
-        transports: ['polling', 'websocket'],
+        transports: ['polling'],
         withCredentials: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         timeout: 20000,
         forceNew: true,
-        autoConnect: true
+        autoConnect: true,
+        path: '/socket.io/',
+        query: {
+          t: Date.now()  // Add timestamp to prevent caching
+        }
       });
 
       socket.on('connect_error', (error) => {
