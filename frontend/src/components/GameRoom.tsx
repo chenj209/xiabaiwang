@@ -203,13 +203,25 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
         <Typography variant="h5">
           房间号: {roomId}
         </Typography>
-        <Button 
-          variant="outlined" 
-          color="error" 
-          onClick={handleLeaveGame}
-        >
-          离开游戏
-        </Button>
+        <Box>
+          {isRoomCreator && (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleNextGame}
+              sx={{ mr: 2 }}
+            >
+              开始下一局
+            </Button>
+          )}
+          <Button 
+            variant="outlined" 
+            color="error" 
+            onClick={handleLeaveGame}
+          >
+            离开游戏
+          </Button>
+        </Box>
       </Box>
       <Typography variant="h6" color="primary" gutterBottom>
         {myRoleLabel}
@@ -338,16 +350,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
           <Typography>
             大聪明（{room.players.find(p => p.id === voteResult.voterId)?.name}）投票给了 {room.players.find(p => p.id === voteResult.targetId)?.name}
           </Typography>
-          {isRoomCreator && (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleNextGame}
-              sx={{ mt: 2 }}
-            >
-              开始下一局
-            </Button>
-          )}
         </Box>
       )}
     </Box>
