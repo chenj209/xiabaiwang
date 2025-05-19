@@ -138,18 +138,35 @@ io.on('connection', (socket) => {
         }
 
         // Check if player is reconnecting
-        if (playerId && playerSessions[playerId]) {
+        if (playerId) {
+            // First check if player exists in the room
+            const existingPlayer = room.players.find(p => p.id === playerId);
+            if (existingPlayer) {
+                // Update socket ID for the existing player
+                existingPlayer.id = socket.id;
+                socket.join(roomId);
+                socket.emit('playerId', playerId);
+                io.to(roomId).emit('playerJoined', room);
+                return;
+            }
+
+            // If not found in room but has a session, check if it's the same room
             const session = playerSessions[playerId];
-            if (session.roomId === roomId) {
-                // Player is reconnecting to the same room
-                const existingPlayer = room.players.find(p => p.id === playerId);
-                if (existingPlayer) {
-                    existingPlayer.id = socket.id;
-                    socket.join(roomId);
-                    socket.emit('playerId', playerId);
-                    io.to(roomId).emit('playerJoined', room);
-                    return;
-                }
+            if (session && session.roomId === roomId) {
+                // Player was in this room but got disconnected
+                const player: Player = {
+                    id: socket.id,
+                    name: playerName,
+                    role: 'liar',
+                    score: 0,
+                    hasUsedHonestButton: false
+                };
+                room.players.push(player);
+                playerSessions[playerId] = { playerId, roomId, playerName };
+                socket.join(roomId);
+                socket.emit('playerId', playerId);
+                io.to(roomId).emit('playerJoined', room);
+                return;
             }
         }
 
@@ -171,7 +188,7 @@ io.on('connection', (socket) => {
         // New player joining
         const newPlayerId = playerId || Math.random().toString(36).substring(7);
         const player: Player = {
-            id: newPlayerId,
+            id: socket.id,
             name: playerName,
             role: 'liar',
             score: 0,
