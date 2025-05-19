@@ -13,7 +13,10 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://8.148.30.163:3001';
+  // Use the current window location to determine the backend URL
+  const backendUrl = window.location.protocol === 'https:' 
+    ? `https://${window.location.hostname}:3001`
+    : `http://${window.location.hostname}:3001`;
 
   const handleCreateRoom = () => {
     if (playerName.trim()) {
