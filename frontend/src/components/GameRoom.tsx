@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, Paper } from '@mui/material';
 import { Socket } from 'socket.io-client';
+import io from 'socket.io-client';
 
 interface GameRoomProps {
   roomId: string;
@@ -32,9 +33,18 @@ interface Room {
 }
 
 // Use the current window location to determine the backend URL
-const backendUrl = window.location.protocol === 'https:' 
-  ? `https://${window.location.hostname}:3001`
-  : `http://${window.location.hostname}:3001`;
+const backendUrl = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:3001'
+  : window.location.protocol === 'https:' 
+    ? `https://${window.location.hostname}:3001`
+    : `http://${window.location.hostname}:3001`;
+
+// Initialize socket with the correct URL
+const socket = io(backendUrl, {
+  transports: ['websocket', 'polling'],
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+});
 
 const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const [room, setRoom] = useState<Room | null>(null);

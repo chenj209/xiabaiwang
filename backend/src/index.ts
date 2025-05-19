@@ -35,17 +35,19 @@ app.use((req, res, next) => {
 
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
+        origin: process.env.NODE_ENV === 'development' 
+            ? 'http://localhost:3000'
+            : ["http://8.148.30.163", "http://8.148.30.163:3001"],
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         credentials: true,
         allowedHeaders: ["Content-Type", "Authorization"]
     },
-    transports: ['polling'],
+    transports: ['websocket', 'polling'],
     allowEIO3: true,
     pingTimeout: 60000,
     pingInterval: 25000,
     connectTimeout: 45000,
-    allowUpgrades: false,  // Disable upgrades for now
+    allowUpgrades: true,
     maxHttpBufferSize: 1e8
 });
 
@@ -60,7 +62,9 @@ io.engine.on("connection", (socket) => {
 
 // Configure CORS for Express
 app.use(cors({
-    origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
+    origin: process.env.NODE_ENV === 'development' 
+        ? 'http://localhost:3000'
+        : ["http://8.148.30.163", "http://8.148.30.163:3001"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
