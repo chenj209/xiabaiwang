@@ -8,6 +8,13 @@ import path from 'path';
 
 const app = express();
 const httpServer = createServer(app);
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 const io = new Server(httpServer, {
     cors: {
         origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
@@ -30,12 +37,20 @@ io.engine.on("connection", (socket) => {
     console.log('New connection:', socket.id);
 });
 
+// Configure CORS for Express
 app.use(cors({
     origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+// Add error handling middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+});
+
 app.use(express.json());
 
 const imagesPath = path.join(__dirname, '../../images');

@@ -21,7 +21,19 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const handleCreateRoom = () => {
     if (playerName.trim()) {
       setError(null);
-      const socket = io(backendUrl);
+      const socket = io(backendUrl, {
+        transports: ['websocket', 'polling'],
+        withCredentials: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 20000
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+        setError('连接服务器失败，请稍后重试');
+      });
+
       socket.emit('createRoom', maxPlayers);
       socket.on('roomCreated', (data) => {
         socket.emit('joinRoom', { roomId: data.id, playerName });
@@ -39,7 +51,19 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const handleJoinRoom = () => {
     if (playerName.trim() && roomId.trim()) {
       setError(null);
-      const socket = io(backendUrl);
+      const socket = io(backendUrl, {
+        transports: ['websocket', 'polling'],
+        withCredentials: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 20000
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+        setError('连接服务器失败，请稍后重试');
+      });
+
       socket.emit('joinRoom', { roomId, playerName });
       socket.on('playerJoined', (room) => {
         onRoomCreated(room.id, playerName, socket.id || '', socket);
