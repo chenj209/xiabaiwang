@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, TextField, Button, Typography, Tabs, Tab, Alert } from '@mui/material';
 import { io, Socket } from 'socket.io-client';
 
@@ -12,73 +12,78 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [roomId, setRoomId] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Check for existing room on component mount
+  useEffect(() => {
+    const savedRoomId = localStorage.getItem('currentRoomId');
+    const savedPlayerName = localStorage.getItem('currentPlayerName');
+    if (savedRoomId && savedPlayerName) {
+      setRoomId(savedRoomId);
+      setPlayerName(savedPlayerName);
+      setActiveTab(1); // Switch to join room tab
+    }
+  }, []);
+
+  const connectToRoom = (roomId: string, playerName: string, isNewRoom: boolean = false) => {
+    setIsConnecting(true);
+    setError(null);
+    const socket = io('http://8.148.30.163:3001', {
+      transports: ['polling'],
+      withCredentials: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+      forceNew: true,
+      autoConnect: true
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+      setError('连接服务器失败，请稍后重试');
+      setIsConnecting(false);
+    });
+
+    socket.on('connect', () => {
+      console.log('Connected to server');
+      if (isNewRoom) {
+        socket.emit('createRoom', maxPlayers);
+      } else {
+        socket.emit('joinRoom', { roomId, playerName });
+      }
+    });
+
+    socket.on('roomCreated', (data) => {
+      socket.emit('joinRoom', { roomId: data.id, playerName });
+      socket.on('playerJoined', (room) => {
+        localStorage.setItem('currentRoomId', room.id);
+        localStorage.setItem('currentPlayerName', playerName);
+        onRoomCreated(room.id, playerName, socket);
+      });
+    });
+
+    socket.on('playerJoined', (room) => {
+      localStorage.setItem('currentRoomId', room.id);
+      localStorage.setItem('currentPlayerName', playerName);
+      onRoomCreated(room.id, playerName, socket);
+    });
+
+    socket.on('error', (errorMessage: string) => {
+      setError(errorMessage);
+      socket.disconnect();
+      setIsConnecting(false);
+    });
+  };
 
   const handleCreateRoom = () => {
     if (playerName.trim()) {
-      setError(null);
-      const socket = io('http://8.148.30.163:3001', {
-        transports: ['polling'],
-        withCredentials: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        timeout: 20000,
-        forceNew: true,
-        autoConnect: true
-      });
-      
-      socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        setError('连接服务器失败，请稍后重试');
-      });
-
-      socket.on('connect', () => {
-        console.log('Connected to server');
-        socket.emit('createRoom', maxPlayers);
-      });
-
-      socket.on('roomCreated', (data) => {
-        socket.emit('joinRoom', { roomId: data.id, playerName });
-        socket.on('playerJoined', (room) => {
-          onRoomCreated(room.id, playerName, socket);
-        });
-        socket.on('error', (errorMessage: string) => {
-          setError(errorMessage);
-          socket.disconnect();
-        });
-      });
+      connectToRoom('', playerName, true);
     }
   };
 
   const handleJoinRoom = () => {
     if (playerName.trim() && roomId.trim()) {
-      setError(null);
-      const socket = io('http://8.148.30.163:3001', {
-        transports: ['polling'],
-        withCredentials: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        timeout: 20000,
-        forceNew: true,
-        autoConnect: true
-      });
-
-      socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        setError('连接服务器失败，请稍后重试');
-      });
-
-      socket.on('connect', () => {
-        console.log('Connected to server');
-        socket.emit('joinRoom', { roomId, playerName });
-      });
-
-      socket.on('playerJoined', (room) => {
-        onRoomCreated(room.id, playerName, socket);
-      });
-      socket.on('error', (errorMessage: string) => {
-        setError(errorMessage);
-        socket.disconnect();
-      });
+      connectToRoom(roomId, playerName);
     }
   };
 
@@ -120,10 +125,10 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
             fullWidth
             variant="contained"
             onClick={handleCreateRoom}
-            disabled={!playerName.trim()}
+            disabled={!playerName.trim() || isConnecting}
             sx={{ mt: 2 }}
           >
-            创建房间
+            {isConnecting ? '连接中...' : '创建房间'}
           </Button>
         </>
       ) : (
@@ -139,10 +144,10 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
             fullWidth
             variant="contained"
             onClick={handleJoinRoom}
-            disabled={!playerName.trim() || !roomId.trim()}
+            disabled={!playerName.trim() || !roomId.trim() || isConnecting}
             sx={{ mt: 2 }}
           >
-            加入房间
+            {isConnecting ? '连接中...' : '加入房间'}
           </Button>
         </>
       )}

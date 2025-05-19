@@ -46,7 +46,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const [answerReveal, setAnswerReveal] = useState<{ showing: boolean; endTime: number; answer?: string }>({ showing: false, endTime: 0 });
   const [countdown, setCountdown] = useState<number>(0);
   const [playerId, setPlayerId] = useState<string>(() => {
-    // Try to get existing player ID from localStorage
     return localStorage.getItem(`playerId_${roomId}`) || '';
   });
 
@@ -60,11 +59,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     });
 
     socket.on('playerJoined', (updatedRoom: Room) => {
+      console.log('Room updated:', updatedRoom);
       setRoom(updatedRoom);
       setPhase(updatedRoom.status as any);
     });
 
     socket.on('gameStarted', (data: { room: Room, question: Question }) => {
+      console.log('Game started:', data);
       setRoom(data.room);
       setPhase('playing');
     });
@@ -122,7 +123,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   }, [socket, roomId, playerName, playerId]);
 
   const handleStartGame = () => {
-    socket.emit('startGame', roomId);
+    if (room && room.players.length >= 3) {
+      socket.emit('startGame', roomId);
+    }
   };
 
   const handleUseHonestButton = () => {
@@ -154,6 +157,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const isSmart = me?.role === 'smart';
   const honestPlayer = room.players.find(p => p.role === 'honest');
   const canStartVoting = phase === 'playing' && !answerReveal.showing && honestPlayer?.hasUsedHonestButton;
+  const isRoomCreator = me?.id === room.players[0]?.id;
 
   // 你的身份
   let myRoleLabel = '';
@@ -187,13 +191,24 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
           <Typography variant="h6" gutterBottom>
             等待玩家加入 ({room.players.length}/{room.maxPlayers})
           </Typography>
-          <Button
-            variant="contained"
-            onClick={handleStartGame}
-            disabled={room.players.length < 3}
-          >
-            开始游戏
-          </Button>
+          {isRoomCreator && (
+            <Button
+              variant="contained"
+              onClick={handleStartGame}
+              disabled={room.players.length < 3}
+              sx={{ mt: 2 }}
+            >
+              开始游戏
+            </Button>
+          )}
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="h6">玩家列表：</Typography>
+            {room.players.map(player => (
+              <Typography key={player.id}>
+                {player.name} {player.id === playerId && '（你）'} {player.id === room.players[0]?.id && '（房主）'}
+              </Typography>
+            ))}
+          </Box>
         </Box>
       )}
       {phase === 'playing' && room.currentQuestion && (
