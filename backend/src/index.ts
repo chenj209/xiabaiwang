@@ -164,6 +164,7 @@ io.on('connection', (socket) => {
                 // Player is reconnecting to the same room
                 const existingPlayer = room.players.find(p => p.id === playerId);
                 if (existingPlayer) {
+                    // Update socket ID for the existing player
                     existingPlayer.id = socket.id;
                     socket.join(roomId);
                     socket.emit('playerId', playerId);
@@ -173,8 +174,21 @@ io.on('connection', (socket) => {
             }
         }
 
-        // Create new player or reconnect existing one
+        // Create new player ID if none exists
         const newPlayerId = playerId || Math.random().toString(36).substring(7);
+        
+        // Check if a player with this ID already exists in the room
+        const existingPlayerWithId = room.players.find(p => p.id === newPlayerId);
+        if (existingPlayerWithId) {
+            // Update socket ID for the existing player
+            existingPlayerWithId.id = socket.id;
+            socket.join(roomId);
+            socket.emit('playerId', newPlayerId);
+            io.to(roomId).emit('playerJoined', room);
+            return;
+        }
+
+        // Create new player
         const player: Player = {
             id: socket.id,
             name: playerName,
