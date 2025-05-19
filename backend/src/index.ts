@@ -12,6 +12,21 @@ const httpServer = createServer(app);
 // Add player session store
 const playerSessions: { [key: string]: { playerId: string, roomId: string, playerName: string } } = {};
 
+// Add function to remove player from all rooms
+const removePlayerFromAllRooms = (playerId: string) => {
+    const session = playerSessions[playerId];
+    if (session) {
+        const room = gameState.rooms[session.roomId];
+        if (room) {
+            room.players = room.players.filter(p => p.id !== playerId);
+            if (room.players.length === 0) {
+                delete gameState.rooms[session.roomId];
+            }
+        }
+        delete playerSessions[playerId];
+    }
+};
+
 // Add request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
@@ -137,55 +152,35 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Check if player is reconnecting
+        // If player has an ID, check if they're already in a room
         if (playerId) {
-            // First check if player exists in the room
-            const existingPlayer = room.players.find(p => p.id === playerId);
-            if (existingPlayer) {
-                // Update socket ID for the existing player
-                existingPlayer.id = socket.id;
-                socket.join(roomId);
-                socket.emit('playerId', playerId);
-                io.to(roomId).emit('playerJoined', room);
-                return;
-            }
-
-            // If not found in room but has a session, check if it's the same room
-            const session = playerSessions[playerId];
-            if (session && session.roomId === roomId) {
-                // Player was in this room but got disconnected
-                const player: Player = {
-                    id: socket.id,
-                    name: playerName,
-                    role: 'liar',
-                    score: 0,
-                    hasUsedHonestButton: false
-                };
-                room.players.push(player);
-                playerSessions[playerId] = { playerId, roomId, playerName };
-                socket.join(roomId);
-                socket.emit('playerId', playerId);
-                io.to(roomId).emit('playerJoined', room);
-                return;
+            const existingSession = playerSessions[playerId];
+            if (existingSession) {
+                // If player is trying to join a different room, prevent it
+                if (existingSession.roomId !== roomId) {
+                    socket.emit('error', '你已经在其他房间中');
+                    return;
+                }
+                // Player is reconnecting to the same room
+                const existingPlayer = room.players.find(p => p.id === playerId);
+                if (existingPlayer) {
+                    existingPlayer.id = socket.id;
+                    socket.join(roomId);
+                    socket.emit('playerId', playerId);
+                    io.to(roomId).emit('playerJoined', room);
+                    return;
+                }
             }
         }
 
-        // Check if player with same name exists
+        // Check if player with same name exists in the room
         const existingPlayerWithName = room.players.find(p => p.name === playerName);
         if (existingPlayerWithName) {
-            // If player exists but has a different ID, it's a reconnection attempt
-            if (playerId && existingPlayerWithName.id !== playerId) {
-                existingPlayerWithName.id = socket.id;
-                socket.join(roomId);
-                socket.emit('playerId', playerId);
-                io.to(roomId).emit('playerJoined', room);
-                return;
-            }
-            socket.emit('error', '该玩家已在房间中');
+            socket.emit('error', '该玩家名已被使用');
             return;
         }
 
-        // New player joining
+        // Create new player
         const newPlayerId = playerId || Math.random().toString(36).substring(7);
         const player: Player = {
             id: socket.id,
@@ -194,11 +189,35 @@ io.on('connection', (socket) => {
             score: 0,
             hasUsedHonestButton: false
         };
+
+        // Add player to room
         room.players.push(player);
         playerSessions[newPlayerId] = { playerId: newPlayerId, roomId, playerName };
         socket.join(roomId);
         socket.emit('playerId', newPlayerId);
         io.to(roomId).emit('playerJoined', room);
+    });
+
+    // 离开游戏
+    socket.on('leaveGame', (data: { roomId: string, playerId: string }) => {
+        const { roomId, playerId } = data;
+        const room = gameState.rooms[roomId];
+        
+        if (room) {
+            // Remove player from room
+            room.players = room.players.filter(p => p.id !== playerId);
+            
+            // Remove player session
+            delete playerSessions[playerId];
+            
+            // If room is empty, delete it
+            if (room.players.length === 0) {
+                delete gameState.rooms[roomId];
+            } else {
+                // Notify other players
+                io.to(roomId).emit('playerJoined', room);
+            }
+        }
     });
 
     // 开始游戏

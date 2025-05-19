@@ -49,11 +49,30 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     return localStorage.getItem(`playerId_${roomId}`) || '';
   });
 
+  const handleLeaveGame = () => {
+    socket.emit('leaveGame', { roomId, playerId });
+    // Clear local storage
+    localStorage.removeItem(`playerId_${roomId}`);
+    localStorage.removeItem('currentRoomId');
+    localStorage.removeItem('currentPlayerName');
+    // Redirect to home page
+    window.location.href = '/';
+  };
+
   useEffect(() => {
+    console.log('GameRoom mounted with playerId:', playerId);
+    
     // Join room with existing player ID if available
-    socket.emit('joinRoom', { roomId, playerName, playerId });
+    if (playerId) {
+      console.log('Attempting to rejoin room with playerId:', playerId);
+      socket.emit('joinRoom', { roomId, playerName, playerId });
+    } else {
+      console.log('Joining room as new player');
+      socket.emit('joinRoom', { roomId, playerName });
+    }
 
     socket.on('playerId', (newPlayerId: string) => {
+      console.log('Received new playerId:', newPlayerId);
       setPlayerId(newPlayerId);
       localStorage.setItem(`playerId_${roomId}`, newPlayerId);
     });
@@ -104,9 +123,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
     // Handle reconnection
     socket.on('connect', () => {
+      console.log('Socket reconnected');
       if (playerId) {
-        socket.emit('reconnect', { playerId });
+        console.log('Attempting to reconnect with playerId:', playerId);
+        socket.emit('joinRoom', { roomId, playerName, playerId });
       }
+    });
+
+    socket.on('error', (error: string) => {
+      console.error('Socket error:', error);
     });
 
     return () => {
@@ -119,6 +144,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       socket.off('voteResult');
       socket.off('answerReveal');
       socket.off('connect');
+      socket.off('error');
     };
   }, [socket, roomId, playerName, playerId]);
 
@@ -175,9 +201,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        房间号: {roomId}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5">
+          房间号: {roomId}
+        </Typography>
+        <Button 
+          variant="outlined" 
+          color="error" 
+          onClick={handleLeaveGame}
+        >
+          离开游戏
+        </Button>
+      </Box>
       <Typography variant="h6" color="primary" gutterBottom>
         {myRoleLabel}
       </Typography>
