@@ -173,14 +173,7 @@ io.on('connection', (socket) => {
             }
         }
 
-        // Check if player with same name exists in the room
-        const existingPlayerWithName = room.players.find(p => p.name === playerName);
-        if (existingPlayerWithName) {
-            socket.emit('error', '该玩家名已被使用');
-            return;
-        }
-
-        // Create new player
+        // Create new player or reconnect existing one
         const newPlayerId = playerId || Math.random().toString(36).substring(7);
         const player: Player = {
             id: socket.id,
