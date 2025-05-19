@@ -139,21 +139,36 @@ io.on('connection', (socket) => {
 
         // Check if player is reconnecting
         if (playerId && playerSessions[playerId]) {
-            const existingPlayer = room.players.find(p => p.id === playerId);
-            if (existingPlayer) {
-                existingPlayer.id = socket.id;
-                socket.join(roomId);
-                io.to(roomId).emit('playerJoined', room);
-                return;
+            const session = playerSessions[playerId];
+            if (session.roomId === roomId) {
+                // Player is reconnecting to the same room
+                const existingPlayer = room.players.find(p => p.id === playerId);
+                if (existingPlayer) {
+                    existingPlayer.id = socket.id;
+                    socket.join(roomId);
+                    socket.emit('playerId', playerId);
+                    io.to(roomId).emit('playerJoined', room);
+                    return;
+                }
             }
         }
 
-        // New player joining
-        if (room.players.find(p => p.name === playerName)) {
+        // Check if player with same name exists
+        const existingPlayerWithName = room.players.find(p => p.name === playerName);
+        if (existingPlayerWithName) {
+            // If player exists but has a different ID, it's a reconnection attempt
+            if (playerId && existingPlayerWithName.id !== playerId) {
+                existingPlayerWithName.id = socket.id;
+                socket.join(roomId);
+                socket.emit('playerId', playerId);
+                io.to(roomId).emit('playerJoined', room);
+                return;
+            }
             socket.emit('error', '该玩家已在房间中');
             return;
         }
 
+        // New player joining
         const newPlayerId = playerId || Math.random().toString(36).substring(7);
         const player: Player = {
             id: newPlayerId,

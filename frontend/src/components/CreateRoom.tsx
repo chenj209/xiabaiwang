@@ -75,6 +75,11 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       onRoomCreated(room.id, playerName, socket);
     });
 
+    socket.on('playerId', (newPlayerId: string) => {
+      console.log('Received player ID:', newPlayerId);
+      localStorage.setItem(`playerId_${roomId}`, newPlayerId);
+    });
+
     socket.on('error', (errorMessage: string) => {
       console.error('Server error:', errorMessage);
       setError(errorMessage);
