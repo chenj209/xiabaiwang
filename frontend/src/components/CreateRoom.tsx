@@ -13,10 +13,12 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://8.148.30.163:3001';
+
   const handleCreateRoom = () => {
     if (playerName.trim()) {
       setError(null);
-      const socket = io('http://localhost:3001');
+      const socket = io(backendUrl);
       socket.emit('createRoom', maxPlayers);
       socket.on('roomCreated', (data) => {
         socket.emit('joinRoom', { roomId: data.id, playerName });
@@ -34,7 +36,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const handleJoinRoom = () => {
     if (playerName.trim() && roomId.trim()) {
       setError(null);
-      const socket = io('http://localhost:3001');
+      const socket = io(backendUrl);
       socket.emit('joinRoom', { roomId, playerName });
       socket.on('playerJoined', (room) => {
         onRoomCreated(room.id, playerName, socket.id || '', socket);

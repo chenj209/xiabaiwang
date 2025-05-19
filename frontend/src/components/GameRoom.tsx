@@ -32,7 +32,7 @@ interface Room {
   round: number;
 }
 
-const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://8.148.30.163:3001';
 
 const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socket }) => {
   const [room, setRoom] = useState<Room | null>(null);
