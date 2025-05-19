@@ -22,11 +22,13 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     if (playerName.trim()) {
       setError(null);
       const socket = io(backendUrl, {
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'],
         withCredentials: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
-        timeout: 20000
+        timeout: 20000,
+        forceNew: true,
+        autoConnect: true
       });
       
       socket.on('connect_error', (error) => {
@@ -34,7 +36,11 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
         setError('连接服务器失败，请稍后重试');
       });
 
-      socket.emit('createRoom', maxPlayers);
+      socket.on('connect', () => {
+        console.log('Connected to server');
+        socket.emit('createRoom', maxPlayers);
+      });
+
       socket.on('roomCreated', (data) => {
         socket.emit('joinRoom', { roomId: data.id, playerName });
         socket.on('playerJoined', (room) => {
@@ -52,11 +58,13 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     if (playerName.trim() && roomId.trim()) {
       setError(null);
       const socket = io(backendUrl, {
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'],
         withCredentials: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
-        timeout: 20000
+        timeout: 20000,
+        forceNew: true,
+        autoConnect: true
       });
 
       socket.on('connect_error', (error) => {
@@ -64,7 +72,11 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
         setError('连接服务器失败，请稍后重试');
       });
 
-      socket.emit('joinRoom', { roomId, playerName });
+      socket.on('connect', () => {
+        console.log('Connected to server');
+        socket.emit('joinRoom', { roomId, playerName });
+      });
+
       socket.on('playerJoined', (room) => {
         onRoomCreated(room.id, playerName, socket.id || '', socket);
       });
