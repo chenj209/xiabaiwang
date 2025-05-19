@@ -77,6 +77,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       setPhase('playing');
     });
 
+    socket.on('nextGameStarted', (data: { room: Room, question: Question }) => {
+      console.log('Next game started:', data);
+      setRoom(data.room);
+      setPhase('playing');
+      setVoteTarget('');
+      setVoteResult(null);
+      setAnswerReveal({ showing: false, endTime: 0 });
+    });
+
     socket.on('showAnswer', (answer: string) => {
       setAnswer(answer);
       setShowAnswer(true);
@@ -151,6 +160,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     if (voteTarget) {
       socket.emit('vote', { roomId, targetId: voteTarget });
     }
+  };
+
+  const handleNextGame = () => {
+    socket.emit('nextGame', roomId);
   };
 
   if (!room) {
@@ -325,6 +338,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
           <Typography>
             大聪明（{room.players.find(p => p.id === voteResult.voterId)?.name}）投票给了 {room.players.find(p => p.id === voteResult.targetId)?.name}
           </Typography>
+          {isRoomCreator && (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleNextGame}
+              sx={{ mt: 2 }}
+            >
+              开始下一局
+            </Button>
+          )}
         </Box>
       )}
     </Box>
