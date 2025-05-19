@@ -111,11 +111,19 @@ io.on('connection', (socket) => {
     // 使用老实人按钮
     socket.on('useHonestButton', (roomId: string) => {
         const room = gameState.rooms[roomId];
-        if (room) {
+        if (room && !room.answerReveal?.showing) {
             const player = room.players.find(p => p.id === socket.id);
             if (player && player.role === 'honest' && !player.hasUsedHonestButton) {
                 player.hasUsedHonestButton = true;
-                socket.emit('showAnswer', room.currentQuestion?.answer);
+                const endTime = Date.now() + 30000;
+                room.answerReveal = { showing: true, endTime };
+                io.to(roomId).emit('answerReveal', { showing: true, endTime, answer: room.currentQuestion?.answer });
+                setTimeout(() => {
+                    if (room.answerReveal?.showing) {
+                        room.answerReveal = { showing: false, endTime: 0 };
+                        io.to(roomId).emit('answerReveal', { showing: false, endTime: 0 });
+                    }
+                }, 30000);
             }
         }
     });
@@ -123,7 +131,7 @@ io.on('connection', (socket) => {
     // 进入投票环节（只有大聪明可以发起）
     socket.on('startVoting', (roomId: string) => {
         const room = gameState.rooms[roomId];
-        if (room && room.status === 'playing') {
+        if (room && room.status === 'playing' && !room.answerReveal?.showing) {
             const smartPlayer = room.players.find(p => p.role === 'smart');
             if (smartPlayer && smartPlayer.id === socket.id) {
                 room.status = 'voting';

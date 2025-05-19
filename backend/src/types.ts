@@ -14,6 +14,7 @@ export interface Room {
     currentQuestion?: Question;
     round: number;
     voteResult?: { voterId: string; targetId: string };
+    answerReveal?: { showing: boolean; endTime: number };
 }
 
 export interface Question {

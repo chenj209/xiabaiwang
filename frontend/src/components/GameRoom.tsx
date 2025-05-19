@@ -39,6 +39,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
   const [phase, setPhase] = useState<'waiting' | 'playing' | 'voting' | 'ended'>('waiting');
   const [voteTarget, setVoteTarget] = useState<string>('');
   const [voteResult, setVoteResult] = useState<{ voterId: string; targetId: string } | null>(null);
+  const [answerReveal, setAnswerReveal] = useState<{ showing: boolean; endTime: number; answer?: string }>({ showing: false, endTime: 0 });
+  const [countdown, setCountdown] = useState<number>(0);
 
   useEffect(() => {
     socket.on('playerJoined', (updatedRoom: Room) => {
@@ -61,6 +63,21 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
     socket.on('voteResult', (result: { voterId: string; targetId: string }) => {
       setVoteResult(result);
       setPhase('ended');
+    });
+    socket.on('answerReveal', (data: { showing: boolean; endTime: number; answer?: string }) => {
+      setAnswerReveal(data);
+      if (data.showing && data.endTime) {
+        const updateCountdown = () => {
+          const left = Math.max(0, Math.floor((data.endTime - Date.now()) / 1000));
+          setCountdown(left);
+          if (left > 0) {
+            setTimeout(updateCountdown, 200);
+          }
+        };
+        updateCountdown();
+      } else {
+        setCountdown(0);
+      }
     });
     return () => {
       // 不断开socket
@@ -98,6 +115,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
 
   const me = room.players.find(p => p.id === playerId);
   const isSmart = me?.role === 'smart';
+  const canStartVoting = !answerReveal.showing;
 
   return (
     <Box>
@@ -124,12 +142,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
             <Typography variant="h6">当前题目：</Typography>
             <Typography>{room.currentQuestion.content}</Typography>
           </Paper>
-          {((phase === 'playing' || phase === 'voting') && showAnswer) && (
+          {((phase === 'playing' || phase === 'voting') && answerReveal.showing) && (
             <Paper sx={{ p: 2, mt: 2, bgcolor: 'primary.light' }}>
-              <Typography>答案：{answer}</Typography>
+              <Typography>答案：{answerReveal.answer}</Typography>
+              <Typography color="secondary">倒计时：{countdown} 秒</Typography>
             </Paper>
           )}
-          {me && me.role === 'honest' && (
+          {me && me.role === 'honest' && phase === 'playing' && !answerReveal.showing && (
             <Button
               variant="contained"
               color="primary"
@@ -140,8 +159,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
             </Button>
           )}
           <Box sx={{ mt: 2 }}>
-            {isSmart && (
-              <Button variant="contained" color="secondary" onClick={handleStartVoting} sx={{ mt: 2 }}>
+            {phase === 'playing' && isSmart && (
+              <Button variant="contained" color="secondary" onClick={handleStartVoting} sx={{ mt: 2 }} disabled={!canStartVoting}>
                 进入投票环节
               </Button>
             )}
