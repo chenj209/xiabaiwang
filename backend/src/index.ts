@@ -14,7 +14,20 @@ const io = new Server(httpServer, {
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         credentials: true,
         allowedHeaders: ["Content-Type", "Authorization"]
-    }
+    },
+    transports: ['websocket', 'polling'],
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000
+});
+
+// Add debug logging
+io.engine.on("connection_error", (err) => {
+    console.log('Connection error:', err);
+});
+
+io.engine.on("connection", (socket) => {
+    console.log('New connection:', socket.id);
 });
 
 app.use(cors({
