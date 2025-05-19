@@ -3,6 +3,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { Room, Player, Question } from './types';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,6 +17,9 @@ const io = new Server(httpServer, {
 
 app.use(cors());
 app.use(express.json());
+
+const imagesPath = path.join(__dirname, '../../images');
+app.use('/images', express.static(imagesPath));
 
 // 游戏状态
 const gameState: { rooms: { [key: string]: Room } } = {
@@ -89,21 +94,34 @@ io.on('connection', (socket) => {
         const room = gameState.rooms[roomId];
         if (room) {
             room.status = 'playing';
-            // 随机选择题目
-            const randomQuestion = sampleQuestions[Math.floor(Math.random() * sampleQuestions.length)];
-            room.currentQuestion = randomQuestion;
-            
+            // 随机选择图片题目
+            const faceDir = path.join(__dirname, '../../images/face');
+            const backDir = path.join(__dirname, '../../images/back');
+            const files = fs.readdirSync(faceDir).filter(f => f.endsWith('.png'));
+            if (files.length === 0) {
+                socket.emit('error', '没有可用的题目图片');
+                return;
+            }
+            const randomFile = files[Math.floor(Math.random() * files.length)];
+            const question = {
+                id: randomFile,
+                content: `/images/face/${randomFile}`,
+                answer: `/images/back/${randomFile}`
+            };
+            room.currentQuestion = question;
             // 随机分配角色
             const players = room.players;
+            players.forEach(p => p.role = 'liar');
             const smartIndex = Math.floor(Math.random() * players.length);
-            const honestIndex = (smartIndex + 1) % players.length;
-            
+            let honestIndex = Math.floor(Math.random() * players.length);
+            while (honestIndex === smartIndex && players.length > 1) {
+                honestIndex = Math.floor(Math.random() * players.length);
+            }
             players[smartIndex].role = 'smart';
             players[honestIndex].role = 'honest';
-            
             io.to(roomId).emit('gameStarted', {
                 room,
-                question: randomQuestion
+                question
             });
         }
     });
