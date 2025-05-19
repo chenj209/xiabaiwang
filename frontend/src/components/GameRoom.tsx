@@ -45,14 +45,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const [voteResult, setVoteResult] = useState<{ voterId: string; targetId: string } | null>(null);
   const [answerReveal, setAnswerReveal] = useState<{ showing: boolean; endTime: number; answer?: string }>({ showing: false, endTime: 0 });
   const [countdown, setCountdown] = useState<number>(0);
-  const [playerId, setPlayerId] = useState<string>(() => {
-    return localStorage.getItem(`playerId_${roomId}`) || '';
-  });
 
   const handleLeaveGame = () => {
-    socket.emit('leaveGame', { roomId, playerId });
+    socket.emit('leaveGame', { roomId, playerId: playerName });
     // Clear local storage
-    localStorage.removeItem(`playerId_${roomId}`);
     localStorage.removeItem('currentRoomId');
     localStorage.removeItem('currentPlayerName');
     // Redirect to home page
@@ -60,21 +56,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   };
 
   useEffect(() => {
-    console.log('GameRoom mounted with playerId:', playerId);
+    console.log('GameRoom mounted');
     
-    // Join room with existing player ID if available
-    if (playerId) {
-      console.log('Attempting to rejoin room with playerId:', playerId);
-      socket.emit('joinRoom', { roomId, playerName, playerId });
-    } else {
-      console.log('Joining room as new player');
-      socket.emit('joinRoom', { roomId, playerName });
-    }
+    // Join room
+    socket.emit('joinRoom', { roomId, playerName });
 
     socket.on('playerId', (newPlayerId: string) => {
-      console.log('Received new playerId:', newPlayerId);
-      setPlayerId(newPlayerId);
-      localStorage.setItem(`playerId_${roomId}`, newPlayerId);
+      console.log('Received player ID:', newPlayerId);
     });
 
     socket.on('playerJoined', (updatedRoom: Room) => {
@@ -124,10 +112,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     // Handle reconnection
     socket.on('connect', () => {
       console.log('Socket reconnected');
-      if (playerId) {
-        console.log('Attempting to reconnect with playerId:', playerId);
-        socket.emit('joinRoom', { roomId, playerName, playerId });
-      }
+      socket.emit('joinRoom', { roomId, playerName });
     });
 
     socket.on('error', (error: string) => {
@@ -146,7 +131,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       socket.off('connect');
       socket.off('error');
     };
-  }, [socket, roomId, playerName, playerId]);
+  }, [socket, roomId, playerName]);
 
   const handleStartGame = () => {
     if (room && room.players.length >= 3) {
@@ -179,7 +164,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     );
   }
 
-  const me = room.players.find(p => p.id === playerId);
+  const me = room.players.find(p => p.name === playerName);
   const isSmart = me?.role === 'smart';
   const honestPlayer = room.players.find(p => p.role === 'honest');
   const canStartVoting = phase === 'playing' && !answerReveal.showing && honestPlayer?.hasUsedHonestButton;
@@ -240,7 +225,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
             <Typography variant="h6">玩家列表：</Typography>
             {room.players.map(player => (
               <Typography key={player.id}>
-                {player.name} {player.id === playerId && '（你）'} {player.id === room.players[0]?.id && '（房主）'}
+                {player.name} {player.id === playerName && '（你）'} {player.id === room.players[0]?.id && '（房主）'}
               </Typography>
             ))}
           </Box>
@@ -298,7 +283,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
             <Typography variant="h6">玩家列表：</Typography>
             {room.players.map(player => (
               <Typography key={player.id}>
-                {player.name} - 分数：{player.score} {player.id === playerId && '（你）'}
+                {player.name} - 分数：{player.score} {player.id === playerName && '（你）'}
               </Typography>
             ))}
           </Box>

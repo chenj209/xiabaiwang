@@ -138,8 +138,8 @@ io.on('connection', (socket) => {
     });
 
     // 加入房间
-    socket.on('joinRoom', (data: { roomId: string, playerName: string, playerId?: string }) => {
-        const { roomId, playerName, playerId } = data;
+    socket.on('joinRoom', (data: { roomId: string, playerName: string }) => {
+        const { roomId, playerName } = data;
         const room = gameState.rooms[roomId];
         
         if (!room) {
@@ -152,57 +152,20 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // If player has an ID, check if they're already in a room
-        if (playerId) {
-            const existingSession = playerSessions[playerId];
-            if (existingSession) {
-                // If player is trying to join a different room, prevent it
-                if (existingSession.roomId !== roomId) {
-                    socket.emit('error', '你已经在其他房间中');
-                    return;
-                }
-                // Player is reconnecting to the same room
-                const existingPlayer = room.players.find(p => p.id === playerId);
-                if (existingPlayer) {
-                    // Update socket ID for the existing player
-                    existingPlayer.id = socket.id;
-                    socket.join(roomId);
-                    socket.emit('playerId', playerId);
-                    io.to(roomId).emit('playerJoined', room);
-                    return;
-                }
-            }
-        }
-
-        // Create new player ID if none exists
-        const newPlayerId = playerId || Math.random().toString(36).substring(7);
-        
-        // Check if a player with this ID already exists in the room
-        const existingPlayerWithId = room.players.find(p => p.id === newPlayerId);
-        if (existingPlayerWithId) {
+        // Check if player already exists in the room
+        const existingPlayer = room.players.find(p => p.name === playerName);
+        if (existingPlayer) {
             // Update socket ID for the existing player
-            existingPlayerWithId.id = socket.id;
+            existingPlayer.id = socket.id;
             socket.join(roomId);
-            socket.emit('playerId', newPlayerId);
-            io.to(roomId).emit('playerJoined', room);
-            return;
-        }
-
-        // Check if a player with this socket ID already exists
-        const existingPlayerWithSocketId = room.players.find(p => p.id === socket.id);
-        if (existingPlayerWithSocketId) {
-            // Update the existing player's ID
-            existingPlayerWithSocketId.id = newPlayerId;
-            playerSessions[newPlayerId] = { playerId: newPlayerId, roomId, playerName };
-            socket.join(roomId);
-            socket.emit('playerId', newPlayerId);
+            socket.emit('playerId', playerName);
             io.to(roomId).emit('playerJoined', room);
             return;
         }
 
         // Create new player
         const player: Player = {
-            id: newPlayerId,  // Use newPlayerId instead of socket.id
+            id: socket.id,
             name: playerName,
             role: 'liar',
             score: 0,
@@ -211,9 +174,8 @@ io.on('connection', (socket) => {
 
         // Add player to room
         room.players.push(player);
-        playerSessions[newPlayerId] = { playerId: newPlayerId, roomId, playerName };
         socket.join(roomId);
-        socket.emit('playerId', newPlayerId);
+        socket.emit('playerId', playerName);
         io.to(roomId).emit('playerJoined', room);
     });
 
@@ -339,11 +301,7 @@ io.on('connection', (socket) => {
         Object.values(gameState.rooms).forEach(room => {
             const player = room.players.find(p => p.id === socket.id);
             if (player) {
-                // Keep the player's persistent ID
-                const session = Object.entries(playerSessions).find(([_, s]) => s.playerId === player.id);
-                if (session) {
-                    player.id = session[0];  // Use the persistent ID
-                }
+                player.id = 'disconnected';
             }
         });
     });
