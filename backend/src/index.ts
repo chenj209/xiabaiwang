@@ -10,8 +10,9 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "http://localhost:3000",
-        methods: ["GET", "POST"]
+        origin: ["http://8.148.30.163", "http://8.148.30.163:3001"],
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
