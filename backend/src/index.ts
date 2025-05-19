@@ -120,6 +120,32 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 进入投票环节（只有大聪明可以发起）
+    socket.on('startVoting', (roomId: string) => {
+        const room = gameState.rooms[roomId];
+        if (room && room.status === 'playing') {
+            const smartPlayer = room.players.find(p => p.role === 'smart');
+            if (smartPlayer && smartPlayer.id === socket.id) {
+                room.status = 'voting';
+                io.to(roomId).emit('votingStarted', { room });
+            }
+        }
+    });
+
+    // 大聪明投票
+    socket.on('vote', (data: { roomId: string, targetId: string }) => {
+        const { roomId, targetId } = data;
+        const room = gameState.rooms[roomId];
+        if (room && room.status === 'voting') {
+            const smartPlayer = room.players.find(p => p.role === 'smart');
+            if (smartPlayer && smartPlayer.id === socket.id) {
+                room.voteResult = { voterId: socket.id, targetId };
+                room.status = 'ended';
+                io.to(roomId).emit('voteResult', { voterId: socket.id, targetId });
+            }
+        }
+    });
+
     // 断开连接
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);

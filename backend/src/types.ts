@@ -10,9 +10,10 @@ export interface Room {
     id: string;
     players: Player[];
     maxPlayers: number;
-    status: 'waiting' | 'playing' | 'ended';
+    status: 'waiting' | 'playing' | 'voting' | 'ended';
     currentQuestion?: Question;
     round: number;
+    voteResult?: { voterId: string; targetId: string };
 }
 
 export interface Question {

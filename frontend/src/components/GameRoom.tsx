@@ -36,21 +36,34 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
   const [room, setRoom] = useState<Room | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [answer, setAnswer] = useState('');
+  const [phase, setPhase] = useState<'waiting' | 'playing' | 'voting' | 'ended'>('waiting');
+  const [voteTarget, setVoteTarget] = useState<string>('');
+  const [voteResult, setVoteResult] = useState<{ voterId: string; targetId: string } | null>(null);
 
   useEffect(() => {
     socket.on('playerJoined', (updatedRoom: Room) => {
       setRoom(updatedRoom);
+      setPhase(updatedRoom.status as any);
     });
     socket.on('gameStarted', (data: { room: Room, question: Question }) => {
       setRoom(data.room);
+      setPhase('playing');
     });
     socket.on('showAnswer', (answer: string) => {
       setAnswer(answer);
       setShowAnswer(true);
       setTimeout(() => setShowAnswer(false), 30000);
     });
+    socket.on('votingStarted', ({ room }) => {
+      setRoom(room);
+      setPhase('voting');
+    });
+    socket.on('voteResult', (result: { voterId: string; targetId: string }) => {
+      setVoteResult(result);
+      setPhase('ended');
+    });
     return () => {
-      // 不再断开socket
+      // 不断开socket
     };
   }, [socket]);
 
@@ -60,6 +73,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
 
   const handleUseHonestButton = () => {
     socket.emit('useHonestButton', roomId);
+  };
+
+  const handleStartVoting = () => {
+    socket.emit('startVoting', roomId);
+  };
+
+  const handleVote = () => {
+    if (voteTarget) {
+      socket.emit('vote', { roomId, targetId: voteTarget });
+    }
   };
 
   if (!room) {
@@ -74,13 +97,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
   }
 
   const me = room.players.find(p => p.id === playerId);
+  const isSmart = me?.role === 'smart';
 
   return (
     <Box>
       <Typography variant="h5" gutterBottom>
         房间号: {roomId}
       </Typography>
-      {room.status === 'waiting' && (
+      {phase === 'waiting' && (
         <Box>
           <Typography variant="h6" gutterBottom>
             等待玩家加入 ({room.players.length}/{room.maxPlayers})
@@ -94,12 +118,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
           </Button>
         </Box>
       )}
-      {room.status === 'playing' && room.currentQuestion && (
+      {phase === 'playing' && room.currentQuestion && (
         <Box>
           <Paper sx={{ p: 2, mb: 2 }}>
             <Typography variant="h6">当前题目：</Typography>
             <Typography>{room.currentQuestion.content}</Typography>
           </Paper>
+          {((phase === 'playing' || phase === 'voting') && showAnswer) && (
+            <Paper sx={{ p: 2, mt: 2, bgcolor: 'primary.light' }}>
+              <Typography>答案：{answer}</Typography>
+            </Paper>
+          )}
           {me && me.role === 'honest' && (
             <Button
               variant="contained"
@@ -110,11 +139,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
               查看答案（老实人专属）
             </Button>
           )}
-          {showAnswer && (
-            <Paper sx={{ p: 2, mt: 2, bgcolor: 'primary.light' }}>
-              <Typography>答案：{answer}</Typography>
-            </Paper>
-          )}
+          <Box sx={{ mt: 2 }}>
+            {isSmart && (
+              <Button variant="contained" color="secondary" onClick={handleStartVoting} sx={{ mt: 2 }}>
+                进入投票环节
+              </Button>
+            )}
+          </Box>
           <Box sx={{ mt: 2 }}>
             <Typography variant="h6">玩家列表：</Typography>
             {room.players.map(player => (
@@ -124,6 +155,44 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
               </Typography>
             ))}
           </Box>
+        </Box>
+      )}
+      {phase === 'voting' && (
+        <Box>
+          {isSmart ? (
+            <>
+              <Typography variant="h6">请选择你认为的老实人：</Typography>
+              {room.players.filter(p => p.role !== 'smart').map(player => (
+                <Button
+                  key={player.id}
+                  variant={voteTarget === player.id ? 'contained' : 'outlined'}
+                  onClick={() => setVoteTarget(player.id)}
+                  sx={{ m: 1 }}
+                >
+                  {player.name}
+                </Button>
+              ))}
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleVote}
+                disabled={!voteTarget}
+                sx={{ ml: 2 }}
+              >
+                投票
+              </Button>
+            </>
+          ) : (
+            <Typography>等待大聪明投票...</Typography>
+          )}
+        </Box>
+      )}
+      {phase === 'ended' && voteResult && (
+        <Box>
+          <Typography variant="h6">投票结果：</Typography>
+          <Typography>
+            大聪明（{room.players.find(p => p.id === voteResult.voterId)?.name}）投票给了 {room.players.find(p => p.id === voteResult.targetId)?.name}
+          </Typography>
         </Box>
       )}
     </Box>
