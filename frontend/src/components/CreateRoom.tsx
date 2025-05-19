@@ -14,7 +14,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Check for existing room on component mount
+  // Check for existing room on component mount and auto-reconnect
   useEffect(() => {
     const savedRoomId = localStorage.getItem('currentRoomId');
     const savedPlayerName = localStorage.getItem('currentPlayerName');
@@ -22,6 +22,8 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       setRoomId(savedRoomId);
       setPlayerName(savedPlayerName);
       setActiveTab(1); // Switch to join room tab
+      // Automatically attempt to reconnect
+      connectToRoom(savedRoomId, savedPlayerName);
     }
   }, []);
 
@@ -54,7 +56,9 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
         socket.emit('createRoom', maxPlayers);
       } else {
         console.log('Joining existing room...');
-        socket.emit('joinRoom', { roomId, playerName });
+        // Get the saved player ID if it exists
+        const savedPlayerId = localStorage.getItem(`playerId_${roomId}`);
+        socket.emit('joinRoom', { roomId, playerName, playerId: savedPlayerId });
       }
     });
 
