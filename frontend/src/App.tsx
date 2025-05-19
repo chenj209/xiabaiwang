@@ -7,7 +7,6 @@ import { Socket } from 'socket.io-client';
 function App() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState<string>('');
-  const [playerId, setPlayerId] = useState<string>('');
   const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
@@ -29,15 +28,14 @@ function App() {
         </Typography>
         {!roomId ? (
           <CreateRoom
-            onRoomCreated={(id, name, pid, sock) => {
+            onRoomCreated={(id, name, sock) => {
               setRoomId(id);
               setPlayerName(name);
-              setPlayerId(pid);
               setSocket(sock);
             }}
           />
         ) : (
-          socket && <GameRoom roomId={roomId} playerName={playerName} playerId={playerId} socket={socket} />
+          socket && <GameRoom roomId={roomId} playerName={playerName} socket={socket} />
         )}
       </Box>
     </Container>

@@ -3,7 +3,7 @@ import { Box, TextField, Button, Typography, Tabs, Tab, Alert } from '@mui/mater
 import { io, Socket } from 'socket.io-client';
 
 interface CreateRoomProps {
-  onRoomCreated: (roomId: string, playerName: string, playerId: string, socket: Socket) => void;
+  onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;
 }
 
 const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
@@ -39,7 +39,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       socket.on('roomCreated', (data) => {
         socket.emit('joinRoom', { roomId: data.id, playerName });
         socket.on('playerJoined', (room) => {
-          onRoomCreated(room.id, playerName, socket.id || '', socket);
+          onRoomCreated(room.id, playerName, socket);
         });
         socket.on('error', (errorMessage: string) => {
           setError(errorMessage);
@@ -73,7 +73,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       });
 
       socket.on('playerJoined', (room) => {
-        onRoomCreated(room.id, playerName, socket.id || '', socket);
+        onRoomCreated(room.id, playerName, socket);
       });
       socket.on('error', (errorMessage: string) => {
         setError(errorMessage);
