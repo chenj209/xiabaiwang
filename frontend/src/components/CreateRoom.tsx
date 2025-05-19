@@ -28,11 +28,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
         reconnectionDelay: 1000,
         timeout: 20000,
         forceNew: true,
-        autoConnect: true,
-        path: '/socket.io/',
-        query: {
-          t: Date.now()  // Add timestamp to prevent caching
-        }
+        autoConnect: true
       });
       
       socket.on('connect_error', (error) => {
@@ -68,11 +64,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
         reconnectionDelay: 1000,
         timeout: 20000,
         forceNew: true,
-        autoConnect: true,
-        path: '/socket.io/',
-        query: {
-          t: Date.now()  // Add timestamp to prevent caching
-        }
+        autoConnect: true
       });
 
       socket.on('connect_error', (error) => {
