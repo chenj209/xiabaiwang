@@ -32,6 +32,8 @@ interface Room {
   round: number;
 }
 
+const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
 const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socket }) => {
   const [room, setRoom] = useState<Room | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -163,13 +165,26 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, playerId, socke
         <Box>
           <Paper sx={{ p: 2, mb: 2 }}>
             <Typography variant="h6">当前题目：</Typography>
-            <Typography>{room.currentQuestion.content}</Typography>
+            {room.currentQuestion.content.endsWith('.png') ? (
+              <img
+                src={backendUrl + room.currentQuestion.content}
+                alt="题目图片"
+                style={{ maxWidth: '100%', maxHeight: 300, display: 'block', margin: '16px auto' }}
+              />
+            ) : (
+              <Typography>{room.currentQuestion.content}</Typography>
+            )}
           </Paper>
           {((phase === 'playing' || phase === 'voting') && answerReveal.showing) && (
             <Paper sx={{ p: 2, mt: 2, bgcolor: 'primary.light' }}>
               {answerReveal.answer ? (
                 <>
-                  <Typography>答案：{answerReveal.answer}</Typography>
+                  <Typography>答案：</Typography>
+                  <img
+                    src={backendUrl + answerReveal.answer}
+                    alt="答案图片"
+                    style={{ maxWidth: '100%', maxHeight: 300, display: 'block', margin: '16px auto' }}
+                  />
                   <Typography color="secondary">倒计时：{countdown} 秒</Typography>
                 </>
               ) : (
