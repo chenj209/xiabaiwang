@@ -5,9 +5,7 @@ import { io, Socket } from 'socket.io-client';
 // Use the current window location to determine the backend URL
 const backendUrl = process.env.NODE_ENV === 'development'
   ? 'http://localhost:3001'
-  : window.location.protocol === 'https:' 
-    ? `https://${window.location.hostname}:3001`
-    : `http://${window.location.hostname}:3001`;
+  : `${window.location.protocol}//${window.location.hostname}:3001`;
 
 interface CreateRoomProps {
   onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;

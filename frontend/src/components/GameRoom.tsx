@@ -35,9 +35,7 @@ interface Room {
 // Use the current window location to determine the backend URL
 const backendUrl = process.env.NODE_ENV === 'development'
   ? 'http://localhost:3001'
-  : window.location.protocol === 'https:' 
-    ? `https://${window.location.hostname}:3001`
-    : `http://${window.location.hostname}:3001`;
+  : `${window.location.protocol}//${window.location.hostname}:3001`;
 
 // Initialize socket with the correct URL
 const socket = io(backendUrl, {
