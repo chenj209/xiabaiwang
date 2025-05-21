@@ -116,9 +116,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       isLiarCorrect?: boolean;
       pointsEarned: number;
       smartPlayerScore: number;
+      honestPlayerScore?: number;
+      gameWinner?: Player;
+      isGameOver: boolean;
     }) => {
       setVoteResult(result);
-      setPhase('ended');
+      setPhase(result.isGameOver ? 'completed' : 'ended');
     });
 
     socket.on('answerReveal', (data: { showing: boolean; endTime: number; answer?: string }) => {

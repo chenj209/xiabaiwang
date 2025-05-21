@@ -123,13 +123,14 @@ io.on('connection', (socket) => {
     });
 
     // 创建房间
-    socket.on('createRoom', (data: { maxPlayers: number, totalRounds: number }) => {
+    socket.on('createRoom', (data: { maxPlayers: number, totalRounds: number, pointsToWin: number }) => {
         const roomId = Math.random().toString(36).substring(7);
         const room: Room = {
             id: roomId,
             players: [],
             maxPlayers: data.maxPlayers,
             totalRounds: data.totalRounds,
+            pointsToWin: data.pointsToWin,
             status: 'waiting',
             round: 0
         };
@@ -329,8 +330,9 @@ io.on('connection', (socket) => {
                 // Check victory conditions
                 const hasWinner = room.players.some(p => p.score >= room.pointsToWin);
                 const isLastRound = room.round >= room.totalRounds - 1;
+                const isGameOver = hasWinner || isLastRound;
 
-                if (hasWinner || isLastRound) {
+                if (isGameOver) {
                     // Find player with highest score
                     const winner = room.players.reduce((prev, current) => 
                         (current.score > prev.score) ? current : prev
@@ -349,7 +351,7 @@ io.on('connection', (socket) => {
                     smartPlayerScore: smartPlayer.score,
                     honestPlayerScore: honestPlayer?.score,
                     gameWinner: room.gameWinner,
-                    isGameOver: room.status === 'completed'
+                    isGameOver
                 });
             }
         }
