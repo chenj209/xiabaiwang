@@ -51,6 +51,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     isLiarCorrect?: boolean;
     pointsEarned: number;
     smartPlayerScore: number;
+    honestPlayerScore?: number;
+    gameWinner?: Player;
+    isGameOver: boolean;
   } | null>(null);
   const [answerReveal, setAnswerReveal] = useState<{ showing: boolean; endTime: number; answer?: string }>({ showing: false, endTime: 0 });
   const [countdown, setCountdown] = useState<number>(0);
@@ -390,8 +393,47 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
             </Typography>
           )}
           <Typography sx={{ mt: 1 }} color="primary">
-            本轮得分：{voteResult.pointsEarned} 分
+            本轮得分：
           </Typography>
+          <Typography>
+            大聪明：{voteResult.pointsEarned} 分
+          </Typography>
+          {!voteResult.isHonestCorrect && (
+            <>
+              <Typography>
+                老实人：3 分（成功隐藏身份）
+              </Typography>
+              <Typography>
+                瞎掰人：1 分（成功误导）
+              </Typography>
+            </>
+          )}
+          
+          {voteResult.isGameOver && voteResult.gameWinner && (
+            <Paper sx={{ mt: 3, p: 2, bgcolor: 'success.light' }}>
+              <Typography variant="h5" gutterBottom>
+                🎉 游戏结束！
+              </Typography>
+              <Typography variant="h6" gutterBottom>
+                获胜者：{voteResult.gameWinner.name}
+              </Typography>
+              <Typography variant="subtitle1" gutterBottom>
+                最终得分：{voteResult.gameWinner.score} 分
+              </Typography>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                所有玩家得分：
+              </Typography>
+              {room.players
+                .sort((a, b) => b.score - a.score)
+                .map(player => (
+                  <Typography key={player.id}>
+                    {player.name}: {player.score} 分
+                    {player.id === voteResult.gameWinner.id && ' 👑'}
+                  </Typography>
+                ))
+              }
+            </Paper>
+          )}
         </Box>
       )}
     </Box>

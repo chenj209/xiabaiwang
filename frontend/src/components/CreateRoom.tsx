@@ -10,6 +10,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [playerName, setPlayerName] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(5);
   const [totalRounds, setTotalRounds] = useState(3);
+  const [pointsToWin, setPointsToWin] = useState(15);
   const [roomId, setRoomId] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +67,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       console.log('Connected to server');
       if (isNewRoom) {
         console.log('Creating new room...');
-        newSocket.emit('createRoom', { maxPlayers, totalRounds });
+        newSocket.emit('createRoom', { maxPlayers, totalRounds, pointsToWin });
       } else {
         console.log('Joining existing room...');
         // Get the saved player ID if it exists
@@ -159,6 +160,16 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
             onChange={(e) => setTotalRounds(Number(e.target.value))}
             margin="normal"
             inputProps={{ min: 1, max: 10 }}
+          />
+          <TextField
+            fullWidth
+            type="number"
+            label="胜利所需分数"
+            value={pointsToWin}
+            onChange={(e) => setPointsToWin(Number(e.target.value))}
+            margin="normal"
+            inputProps={{ min: 5, max: 30 }}
+            helperText="达到此分数或完成所有回合时游戏结束"
           />
           <Button
             fullWidth

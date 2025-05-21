@@ -300,6 +300,7 @@ io.on('connection', (socket) => {
                 let pointsEarned = 0;
                 const isHonestCorrect = honestTargetId === honestPlayer?.id;
                 
+                // Points for 大聪明
                 if (isHonestCorrect) {
                     pointsEarned += 2; // 2 points for correctly identifying 老实人
                 }
@@ -312,6 +313,31 @@ io.on('connection', (socket) => {
                 }
                 
                 smartPlayer.score += pointsEarned;
+
+                // Points for 老实人
+                if (!isHonestCorrect && honestPlayer) {
+                    honestPlayer.score += 3; // 3 points for not being discovered
+                }
+
+                // Points for 瞎掰人
+                if (!isHonestCorrect) {
+                    room.players
+                        .filter(p => p.role === 'liar')
+                        .forEach(p => p.score += 1); // 1 point for successful misdirection
+                }
+
+                // Check victory conditions
+                const hasWinner = room.players.some(p => p.score >= room.pointsToWin);
+                const isLastRound = room.round >= room.totalRounds - 1;
+
+                if (hasWinner || isLastRound) {
+                    // Find player with highest score
+                    const winner = room.players.reduce((prev, current) => 
+                        (current.score > prev.score) ? current : prev
+                    );
+                    room.gameWinner = winner;
+                    room.status = 'completed';
+                }
                 
                 io.to(roomId).emit('voteResult', { 
                     voterId: socket.id,
@@ -320,7 +346,10 @@ io.on('connection', (socket) => {
                     isHonestCorrect,
                     isLiarCorrect: liarTargetId ? room.players.find(p => p.id === liarTargetId)?.role === 'liar' : undefined,
                     pointsEarned,
-                    smartPlayerScore: smartPlayer.score
+                    smartPlayerScore: smartPlayer.score,
+                    honestPlayerScore: honestPlayer?.score,
+                    gameWinner: room.gameWinner,
+                    isGameOver: room.status === 'completed'
                 });
             }
         }

@@ -10,16 +10,18 @@ export interface Room {
     id: string;
     players: Player[];
     maxPlayers: number;
-    status: 'waiting' | 'playing' | 'voting' | 'ended';
+    status: 'waiting' | 'playing' | 'voting' | 'ended' | 'completed';
     currentQuestion?: Question;
     round: number;
     totalRounds: number;
+    pointsToWin: number;
     voteResult?: { 
         voterId: string; 
         honestTargetId: string;
         liarTargetId?: string;
     };
     answerReveal?: { showing: boolean; endTime: number };
+    gameWinner?: Player;
 }
 
 export interface Question {
