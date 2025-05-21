@@ -40,7 +40,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const [room, setRoom] = useState<Room | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [answer, setAnswer] = useState('');
-  const [phase, setPhase] = useState<'waiting' | 'playing' | 'voting' | 'ended'>('waiting');
+  const [phase, setPhase] = useState<'waiting' | 'playing' | 'voting' | 'ended' | 'completed'>('waiting');
   const [honestVoteTarget, setHonestVoteTarget] = useState<string>('');
   const [liarVoteTarget, setLiarVoteTarget] = useState<string>('');
   const [voteResult, setVoteResult] = useState<{
