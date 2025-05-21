@@ -9,6 +9,7 @@ interface CreateRoomProps {
 const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [playerName, setPlayerName] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(5);
+  const [totalRounds, setTotalRounds] = useState(3);
   const [roomId, setRoomId] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +66,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       console.log('Connected to server');
       if (isNewRoom) {
         console.log('Creating new room...');
-        newSocket.emit('createRoom', maxPlayers);
+        newSocket.emit('createRoom', { maxPlayers, totalRounds });
       } else {
         console.log('Joining existing room...');
         // Get the saved player ID if it exists
@@ -149,6 +150,15 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
             onChange={(e) => setMaxPlayers(Number(e.target.value))}
             margin="normal"
             inputProps={{ min: 3, max: 9 }}
+          />
+          <TextField
+            fullWidth
+            type="number"
+            label="游戏局数"
+            value={totalRounds}
+            onChange={(e) => setTotalRounds(Number(e.target.value))}
+            margin="normal"
+            inputProps={{ min: 1, max: 10 }}
           />
           <Button
             fullWidth

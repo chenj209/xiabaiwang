@@ -13,7 +13,12 @@ export interface Room {
     status: 'waiting' | 'playing' | 'voting' | 'ended';
     currentQuestion?: Question;
     round: number;
-    voteResult?: { voterId: string; targetId: string };
+    totalRounds: number;
+    voteResult?: { 
+        voterId: string; 
+        honestTargetId: string;
+        liarTargetId?: string;
+    };
     answerReveal?: { showing: boolean; endTime: number };
 }
 

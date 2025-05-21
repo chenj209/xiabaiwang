@@ -41,8 +41,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [answer, setAnswer] = useState('');
   const [phase, setPhase] = useState<'waiting' | 'playing' | 'voting' | 'ended'>('waiting');
-  const [voteTarget, setVoteTarget] = useState<string>('');
-  const [voteResult, setVoteResult] = useState<{ voterId: string; targetId: string } | null>(null);
+  const [honestVoteTarget, setHonestVoteTarget] = useState<string>('');
+  const [liarVoteTarget, setLiarVoteTarget] = useState<string>('');
+  const [voteResult, setVoteResult] = useState<{
+    voterId: string;
+    honestTargetId: string;
+    liarTargetId?: string;
+    isHonestCorrect: boolean;
+    isLiarCorrect?: boolean;
+    pointsEarned: number;
+    smartPlayerScore: number;
+  } | null>(null);
   const [answerReveal, setAnswerReveal] = useState<{ showing: boolean; endTime: number; answer?: string }>({ showing: false, endTime: 0 });
   const [countdown, setCountdown] = useState<number>(0);
 
@@ -81,7 +90,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       console.log('Next game started:', data);
       setRoom(data.room);
       setPhase('playing');
-      setVoteTarget('');
       setVoteResult(null);
       setAnswerReveal({ showing: false, endTime: 0 });
     });
@@ -97,7 +105,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       setPhase('voting');
     });
 
-    socket.on('voteResult', (result: { voterId: string; targetId: string }) => {
+    socket.on('voteResult', (result: {
+      voterId: string;
+      honestTargetId: string;
+      liarTargetId?: string;
+      isHonestCorrect: boolean;
+      isLiarCorrect?: boolean;
+      pointsEarned: number;
+      smartPlayerScore: number;
+    }) => {
       setVoteResult(result);
       setPhase('ended');
     });
@@ -152,13 +168,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     socket.emit('useHonestButton', roomId);
   };
 
-  const handleStartVoting = () => {
-    socket.emit('startVoting', roomId);
-  };
-
   const handleVote = () => {
-    if (voteTarget) {
-      socket.emit('vote', { roomId, targetId: voteTarget });
+    if (honestVoteTarget) {
+      socket.emit('vote', { 
+        roomId, 
+        honestTargetId: honestVoteTarget,
+        liarTargetId: liarVoteTarget || undefined
+      });
     }
   };
 
@@ -299,7 +315,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
           )}
           <Box sx={{ mt: 2 }}>
             {phase === 'playing' && isSmart && (
-              <Button variant="contained" color="secondary" onClick={handleStartVoting} sx={{ mt: 2 }} disabled={!canStartVoting}>
+              <Button variant="contained" color="secondary" onClick={handleVote} sx={{ mt: 2 }} disabled={!canStartVoting}>
                 进入投票环节
               </Button>
             )}
@@ -318,23 +334,36 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
         <Box>
           {isSmart ? (
             <>
-              <Typography variant="h6">请选择你认为的老实人：</Typography>
+              <Typography variant="h6" gutterBottom>请选择你认为的老实人：</Typography>
               {room.players.filter(p => p.role !== 'smart').map(player => (
                 <Button
                   key={player.id}
-                  variant={voteTarget === player.id ? 'contained' : 'outlined'}
-                  onClick={() => setVoteTarget(player.id)}
+                  variant={honestVoteTarget === player.id ? 'contained' : 'outlined'}
+                  onClick={() => setHonestVoteTarget(player.id)}
                   sx={{ m: 1 }}
                 >
                   {player.name}
                 </Button>
               ))}
+              
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>请选择你认为的瞎掰人（可选）：</Typography>
+              {room.players.filter(p => p.role !== 'smart' && p.id !== honestVoteTarget).map(player => (
+                <Button
+                  key={player.id}
+                  variant={liarVoteTarget === player.id ? 'contained' : 'outlined'}
+                  onClick={() => setLiarVoteTarget(player.id)}
+                  sx={{ m: 1 }}
+                >
+                  {player.name}
+                </Button>
+              ))}
+              
               <Button
                 variant="contained"
                 color="primary"
                 onClick={handleVote}
-                disabled={!voteTarget}
-                sx={{ ml: 2 }}
+                disabled={!honestVoteTarget}
+                sx={{ mt: 2, display: 'block' }}
               >
                 投票
               </Button>
@@ -348,7 +377,20 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
         <Box>
           <Typography variant="h6">投票结果：</Typography>
           <Typography>
-            大聪明（{room.players.find(p => p.id === voteResult.voterId)?.name}）投票给了 {room.players.find(p => p.id === voteResult.targetId)?.name}
+            大聪明（{room.players.find(p => p.id === voteResult.voterId)?.name}）认为：
+          </Typography>
+          <Typography>
+            老实人是 {room.players.find(p => p.id === voteResult.honestTargetId)?.name}
+            {voteResult.isHonestCorrect ? ' ✅' : ' ❌'}
+          </Typography>
+          {voteResult.liarTargetId && (
+            <Typography>
+              瞎掰人是 {room.players.find(p => p.id === voteResult.liarTargetId)?.name}
+              {voteResult.isLiarCorrect ? ' ✅' : ' ❌'}
+            </Typography>
+          )}
+          <Typography sx={{ mt: 1 }} color="primary">
+            本轮得分：{voteResult.pointsEarned} 分
           </Typography>
         </Box>
       )}

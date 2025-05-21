@@ -123,12 +123,13 @@ io.on('connection', (socket) => {
     });
 
     // 创建房间
-    socket.on('createRoom', (maxPlayers: number) => {
+    socket.on('createRoom', (data: { maxPlayers: number, totalRounds: number }) => {
         const roomId = Math.random().toString(36).substring(7);
         const room: Room = {
             id: roomId,
             players: [],
-            maxPlayers,
+            maxPlayers: data.maxPlayers,
+            totalRounds: data.totalRounds,
             status: 'waiting',
             round: 0
         };
@@ -281,15 +282,46 @@ io.on('connection', (socket) => {
     });
 
     // 大聪明投票
-    socket.on('vote', (data: { roomId: string, targetId: string }) => {
-        const { roomId, targetId } = data;
+    socket.on('vote', (data: { roomId: string, honestTargetId: string, liarTargetId?: string }) => {
+        const { roomId, honestTargetId, liarTargetId } = data;
         const room = gameState.rooms[roomId];
         if (room && room.status === 'voting') {
             const smartPlayer = room.players.find(p => p.role === 'smart');
+            const honestPlayer = room.players.find(p => p.role === 'honest');
             if (smartPlayer && smartPlayer.id === socket.id) {
-                room.voteResult = { voterId: socket.id, targetId };
+                room.voteResult = { 
+                    voterId: socket.id, 
+                    honestTargetId,
+                    liarTargetId 
+                };
                 room.status = 'ended';
-                io.to(roomId).emit('voteResult', { voterId: socket.id, targetId });
+                
+                // Award points for correct identifications
+                let pointsEarned = 0;
+                const isHonestCorrect = honestTargetId === honestPlayer?.id;
+                
+                if (isHonestCorrect) {
+                    pointsEarned += 2; // 2 points for correctly identifying 老实人
+                }
+                
+                if (liarTargetId) {
+                    const targetPlayer = room.players.find(p => p.id === liarTargetId);
+                    if (targetPlayer?.role === 'liar') {
+                        pointsEarned += 1; // 1 point for correctly identifying 瞎掰人
+                    }
+                }
+                
+                smartPlayer.score += pointsEarned;
+                
+                io.to(roomId).emit('voteResult', { 
+                    voterId: socket.id,
+                    honestTargetId,
+                    liarTargetId,
+                    isHonestCorrect,
+                    isLiarCorrect: liarTargetId ? room.players.find(p => p.id === liarTargetId)?.role === 'liar' : undefined,
+                    pointsEarned,
+                    smartPlayerScore: smartPlayer.score
+                });
             }
         }
     });
