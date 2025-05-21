@@ -431,7 +431,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                 .map(player => (
                   <Typography key={player.id}>
                     {player.name}: {player.score} 分
-                    {player.id === voteResult.gameWinner.id && ' 👑'}
+                    {player.id === voteResult.gameWinner?.id && ' 👑'}
                   </Typography>
                 ))
               }
