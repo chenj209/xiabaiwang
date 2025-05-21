@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Box, TextField, Button, Typography, Tabs, Tab, Alert } from '@mui/material';
+import { Box, TextField, Button, Typography, Tabs, Tab, Alert, Accordion, AccordionSummary, AccordionDetails, Slider, List, ListItem, ListItemText, ListItemSecondaryAction, Paper, Chip, IconButton, Tooltip } from '@mui/material';
 import { io, Socket } from 'socket.io-client';
 
 interface CreateRoomProps {
   onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;
+}
+
+interface RoomInfo {
+  id: string;
+  playerCount: number;
+  maxPlayers: number;
+  status: 'waiting' | 'playing' | 'ended' | 'completed';
+  totalRounds: number;
+  pointsToWin: number;
+  answerViewTime: number;
+  players: {
+    name: string;
+    score: number;
+    isCreator: boolean;
+  }[];
 }
 
 const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
@@ -11,11 +26,13 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [maxPlayers, setMaxPlayers] = useState(5);
   const [totalRounds, setTotalRounds] = useState(3);
   const [pointsToWin, setPointsToWin] = useState(15);
+  const [answerViewTime, setAnswerViewTime] = useState(30);
   const [roomId, setRoomId] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [availableRooms, setAvailableRooms] = useState<RoomInfo[]>([]);
 
   // Check for existing room on component mount and auto-reconnect
   useEffect(() => {
@@ -34,16 +51,11 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     };
   }, []);
 
-  const connectToRoom = (roomId: string, playerName: string, isNewRoom: boolean = false) => {
-    setIsConnecting(true);
-    setError(null);
-
-    // Disconnect existing socket if any
-    if (socket) {
-      socket.disconnect();
-    }
-
-    const newSocket = io('http://8.148.30.163:3001', {
+  // Initialize socket connection when component mounts
+  useEffect(() => {
+    const serverUrl = 'http://8.148.30.163:3001';
+    const serverUrl_d = 'http://localhost:3001';
+    const newSocket = io(serverUrl_d, {
       transports: ['polling'],
       withCredentials: true,
       reconnectionAttempts: 5,
@@ -55,76 +67,273 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
 
     setSocket(newSocket);
 
-    // Set up all event listeners before connecting
+    // Set up socket event listeners
+    newSocket.on('connect', () => {
+      console.log('Socket connected');
+      if (activeTab === 1) {
+        console.log('Requesting room list after connection');
+        newSocket.emit('getRooms');
+      }
+    });
+
+    newSocket.on('roomList', (rooms: RoomInfo[]) => {
+      console.log('Received room list:', rooms);
+      setAvailableRooms(rooms);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+      setError('连接服务器失败，请稍后重试');
+    });
+
+    // Clean up on unmount
+    return () => {
+      console.log('Cleaning up socket connection');
+      newSocket.off('connect');
+      newSocket.off('roomList');
+      newSocket.off('connect_error');
+      newSocket.disconnect();
+    };
+  }, []); // Only run on mount
+
+  const connectToRoom = (roomId: string, playerName: string, isNewRoom: boolean = false) => {
+    setIsConnecting(true);
+    setError(null);
+
+    // Clean up any existing socket connection
+    if (socket) {
+      socket.off('roomCreated');
+      socket.off('playerJoined');
+      socket.off('error');
+    }
+
+    const serverUrl = 'http://8.148.30.163:3001';
+    const serverUrl_d = 'http://localhost:3001';
+    const newSocket = io(serverUrl_d, {
+      transports: ['polling'],
+      withCredentials: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+      forceNew: true,
+      autoConnect: true
+    });
+
+    setSocket(newSocket);
+
+    newSocket.on('connect', () => {
+      console.log('Socket connected, proceeding with room action');
+      if (isNewRoom) {
+        console.log('Creating new room with settings:', { maxPlayers, totalRounds, pointsToWin, answerViewTime });
+        newSocket.emit('createRoom', { maxPlayers, totalRounds, pointsToWin, answerViewTime });
+      } else {
+        console.log('Joining existing room:', roomId);
+        newSocket.emit('joinRoom', { roomId, playerName });
+      }
+    });
+
     newSocket.on('connect_error', (error) => {
       console.error('Connection error:', error);
       setError('连接服务器失败，请稍后重试');
       setIsConnecting(false);
-      newSocket.disconnect();
-    });
-
-    newSocket.on('connect', () => {
-      console.log('Connected to server');
-      if (isNewRoom) {
-        console.log('Creating new room...');
-        newSocket.emit('createRoom', { maxPlayers, totalRounds, pointsToWin });
-      } else {
-        console.log('Joining existing room...');
-        // Get the saved player ID if it exists
-        const savedPlayerId = localStorage.getItem(`playerId_${roomId}`);
-        console.log('Attempting to join with playerId:', savedPlayerId);
-        newSocket.emit('joinRoom', { roomId, playerName, playerId: savedPlayerId });
-      }
     });
 
     newSocket.on('roomCreated', (data) => {
-      console.log('Room created:', data);
+      console.log('Room created, joining room:', data);
       newSocket.emit('joinRoom', { roomId: data.id, playerName });
     });
 
     newSocket.on('playerJoined', (room) => {
-      console.log('Player joined:', room);
+      console.log('Successfully joined room:', room);
       localStorage.setItem('currentRoomId', room.id);
       localStorage.setItem('currentPlayerName', playerName);
       setIsConnecting(false);
       onRoomCreated(room.id, playerName, newSocket);
     });
 
-    newSocket.on('playerId', (newPlayerId: string) => {
-      console.log('Received player ID:', newPlayerId);
-      localStorage.setItem(`playerId_${roomId}`, newPlayerId);
-    });
-
     newSocket.on('error', (errorMessage: string) => {
       console.error('Server error:', errorMessage);
       setError(errorMessage);
       setIsConnecting(false);
-      newSocket.disconnect();
     });
 
     // Connect to the server
     newSocket.connect();
   };
 
-  const handleCreateRoom = () => {
-    if (playerName.trim()) {
-      connectToRoom('', playerName, true);
+  // Request room list when switching to join tab
+  useEffect(() => {
+    if (socket?.connected && activeTab === 1) {
+      console.log('Requesting room list on tab change');
+      socket.emit('getRooms');
     }
-  };
+  }, [activeTab, socket?.connected]);
 
-  const handleJoinRoom = () => {
-    if (playerName.trim() && roomId.trim()) {
-      connectToRoom(roomId, playerName);
+  // Add auto-refresh for room list
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    
+    if (socket?.connected && activeTab === 1) {
+      // Refresh room list every 5 seconds
+      intervalId = setInterval(() => {
+        console.log('Auto-refreshing room list');
+        socket.emit('getRooms');
+      }, 5000);
     }
-  };
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [activeTab, socket?.connected]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
     setError(null);
+    if (newValue === 1 && socket?.connected) {
+      console.log('Requesting room list on tab change');
+      socket.emit('getRooms');
+    }
   };
 
+  const handleCreateRoom = () => {
+    if (!playerName.trim()) {
+      setError('请输入你的名字');
+      return;
+    }
+    console.log('Creating new room...');
+    connectToRoom('', playerName, true);
+  };
+
+  const handleJoinRoom = () => {
+    if (!playerName.trim()) {
+      setError('请输入你的名字');
+      return;
+    }
+    if (!roomId.trim()) {
+      setError('请选择或输入房间号');
+      return;
+    }
+    console.log('Joining room:', roomId);
+    connectToRoom(roomId, playerName, false);
+  };
+
+  // Add this function to get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'waiting':
+        return 'success';
+      case 'playing':
+        return 'warning';
+      case 'ended':
+      case 'completed':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+
+  // Add this function to get status text
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'waiting':
+        return '等待中';
+      case 'playing':
+        return '游戏中';
+      case 'ended':
+        return '已结束';
+      case 'completed':
+        return '已完成';
+      default:
+        return status;
+    }
+  };
+
+  // Modify the join room section to include room list
+  const renderJoinRoom = () => (
+    <>
+      <Typography variant="h6" gutterBottom>
+        可用房间
+      </Typography>
+      {availableRooms.length === 0 ? (
+        <Typography color="text.secondary" sx={{ textAlign: 'center', my: 2 }}>
+          暂无可用房间
+        </Typography>
+      ) : (
+        <List sx={{ width: '100%', bgcolor: 'background.paper', mb: 2 }}>
+          {availableRooms.map((room) => (
+            <Paper 
+              key={room.id} 
+              sx={{ 
+                mb: 1, 
+                p: 1,
+                cursor: 'pointer',
+                bgcolor: roomId === room.id ? 'action.selected' : 'background.paper',
+                '&:hover': {
+                  bgcolor: 'action.hover'
+                }
+              }}
+              onClick={() => setRoomId(room.id)}
+            >
+              <ListItem>
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="subtitle1">
+                        房间号: {room.id}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={getStatusText(room.status)}
+                        color={getStatusColor(room.status) as any}
+                      />
+                    </Box>
+                  }
+                  secondary={
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="body2" component="div">
+                        玩家: {room.playerCount}/{room.maxPlayers}
+                      </Typography>
+                      <Typography variant="body2" component="div">
+                        设置: {room.totalRounds}局 | {room.pointsToWin}分胜利 | {room.answerViewTime}秒查看
+                      </Typography>
+                      <Typography variant="body2" component="div">
+                        玩家列表: {room.players.map(p => 
+                          p.isCreator ? `${p.name}(房主)` : p.name
+                        ).join(', ')}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </ListItem>
+            </Paper>
+          ))}
+        </List>
+      )}
+      <TextField
+        fullWidth
+        label="你的名字"
+        value={playerName}
+        onChange={(e) => setPlayerName(e.target.value)}
+        margin="normal"
+        error={!playerName.trim() && isConnecting}
+        helperText={!playerName.trim() && isConnecting ? '请输入你的名字' : ''}
+      />
+      <Button
+        fullWidth
+        variant="contained"
+        onClick={handleJoinRoom}
+        disabled={!playerName.trim() || !roomId.trim() || isConnecting}
+        sx={{ mt: 2 }}
+      >
+        {isConnecting ? '加入中...' : '加入房间'}
+      </Button>
+    </>
+  );
+
   return (
-    <Box sx={{ maxWidth: 400, mx: 'auto', mt: 4 }}>
+    <Box sx={{ maxWidth: 600, mx: 'auto', p: 3 }}>
       <Tabs value={activeTab} onChange={handleTabChange} centered sx={{ mb: 3 }}>
         <Tab label="创建房间" />
         <Tab label="加入房间" />
@@ -134,43 +343,78 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
           {error}
         </Alert>
       )}
-      <TextField
-        fullWidth
-        label="你的名字"
-        value={playerName}
-        onChange={(e) => setPlayerName(e.target.value)}
-        margin="normal"
-      />
       {activeTab === 0 ? (
         <>
           <TextField
             fullWidth
-            type="number"
-            label="最大玩家数"
-            value={maxPlayers}
-            onChange={(e) => setMaxPlayers(Number(e.target.value))}
+            label="你的名字"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
             margin="normal"
-            inputProps={{ min: 3, max: 9 }}
+            error={!playerName.trim() && isConnecting}
+            helperText={!playerName.trim() && isConnecting ? '请输入你的名字' : ''}
           />
-          <TextField
-            fullWidth
-            type="number"
-            label="游戏局数"
-            value={totalRounds}
-            onChange={(e) => setTotalRounds(Number(e.target.value))}
-            margin="normal"
-            inputProps={{ min: 1, max: 10 }}
-          />
-          <TextField
-            fullWidth
-            type="number"
-            label="胜利所需分数"
-            value={pointsToWin}
-            onChange={(e) => setPointsToWin(Number(e.target.value))}
-            margin="normal"
-            inputProps={{ min: 5, max: 30 }}
-            helperText="达到此分数或完成所有回合时游戏结束"
-          />
+          <Accordion defaultExpanded={false}>
+            <AccordionSummary
+              expandIcon={<Typography>▼</Typography>}
+              aria-controls="game-settings-content"
+              id="game-settings-header"
+            >
+              <Typography>游戏设置</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box sx={{ mt: 1 }}>
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>最大玩家数 (3-10)</Typography>
+                  <Slider
+                    value={maxPlayers}
+                    onChange={(_, value) => setMaxPlayers(value as number)}
+                    min={3}
+                    max={10}
+                    marks
+                    step={1}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>游戏局数 (1-10)</Typography>
+                  <Slider
+                    value={totalRounds}
+                    onChange={(_, value) => setTotalRounds(value as number)}
+                    min={1}
+                    max={10}
+                    marks
+                    step={1}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>获胜所需分数 (5-30)</Typography>
+                  <Slider
+                    value={pointsToWin}
+                    onChange={(_, value) => setPointsToWin(value as number)}
+                    min={5}
+                    max={30}
+                    marks
+                    step={5}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>答案显示时间 (秒) (10-60)</Typography>
+                  <Slider
+                    value={answerViewTime}
+                    onChange={(_, value) => setAnswerViewTime(value as number)}
+                    min={10}
+                    max={60}
+                    marks
+                    step={5}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+              </Box>
+            </AccordionDetails>
+          </Accordion>
           <Button
             fullWidth
             variant="contained"
@@ -182,24 +426,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
           </Button>
         </>
       ) : (
-        <>
-          <TextField
-            fullWidth
-            label="房间号"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-            margin="normal"
-          />
-          <Button
-            fullWidth
-            variant="contained"
-            onClick={handleJoinRoom}
-            disabled={!playerName.trim() || !roomId.trim() || isConnecting}
-            sx={{ mt: 2 }}
-          >
-            {isConnecting ? '连接中...' : '加入房间'}
-          </Button>
-        </>
+        renderJoinRoom()
       )}
     </Box>
   );

@@ -15,6 +15,7 @@ export interface Room {
     round: number;
     totalRounds: number;
     pointsToWin: number;
+    answerViewTime: number; // in seconds
     voteResult?: { 
         voterId: string; 
         honestTargetId: string;
