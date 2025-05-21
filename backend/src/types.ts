@@ -23,6 +23,7 @@ export interface Room {
     };
     answerReveal?: { showing: boolean; endTime: number };
     gameWinner?: Player;
+    currentSmartIndex: number; // Index of the current smart player in the players array
 }
 
 export interface Question {

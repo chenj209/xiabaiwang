@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Box, TextField, Button, Typography, Tabs, Tab, Alert, Accordion, AccordionSummary, AccordionDetails, Slider, List, ListItem, ListItemText, ListItemSecondaryAction, Paper, Chip, IconButton, Tooltip } from '@mui/material';
+import { Box, TextField, Button, Typography, Tabs, Tab, Alert, Accordion, AccordionSummary, AccordionDetails, Slider, List, ListItem, ListItemText, ListItemSecondaryAction, Paper, Chip, IconButton, Tooltip, Avatar, Stack } from '@mui/material';
 import { io, Socket } from 'socket.io-client';
+import { PeopleAlt } from '@mui/icons-material';
 
 interface CreateRoomProps {
   onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;
@@ -20,6 +21,20 @@ interface RoomInfo {
     isCreator: boolean;
   }[];
 }
+
+// Helper function to generate consistent colors from names
+const stringToColor = (string: string) => {
+  let hash = 0;
+  for (let i = 0; i < string.length; i++) {
+    hash = string.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  let color = '#';
+  for (let i = 0; i < 3; i++) {
+    const value = (hash >> (i * 8)) & 0xFF;
+    color += ('00' + value.toString(16)).substr(-2);
+  }
+  return color;
+};
 
 const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [playerName, setPlayerName] = useState('');
@@ -55,7 +70,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   useEffect(() => {
     const serverUrl = 'http://8.148.30.163:3001';
     const serverUrl_d = 'http://localhost:3001';
-    const newSocket = io(serverUrl, {
+    const newSocket = io(serverUrl_d, {
       transports: ['polling'],
       withCredentials: true,
       reconnectionAttempts: 5,
@@ -299,10 +314,21 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
                         设置: {room.totalRounds}局 | {room.pointsToWin}分胜利 | {room.answerViewTime}秒查看
                       </Typography>
                       <Typography variant="body2" component="div">
-                        玩家列表: {room.players.map(p => 
-                          p.isCreator ? `${p.name}(房主)` : p.name
-                        ).join(', ')}
+                        玩家列表:
                       </Typography>
+                      <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+                        {room.players.map(p => (
+                          <Chip
+                            key={p.name}
+                            avatar={<Avatar sx={{ bgcolor: stringToColor(p.name) }}>{p.name.charAt(0).toUpperCase()}</Avatar>}
+                            label={p.name}
+                            variant={p.isCreator ? "filled" : "outlined"}
+                            color={p.isCreator ? "primary" : "default"}
+                            size="small"
+                            sx={{ mb: 0.5 }}
+                          />
+                        ))}
+                      </Stack>
                     </Box>
                   }
                 />

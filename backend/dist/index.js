@@ -208,7 +208,8 @@ io.on('connection', (socket) => {
             pointsToWin: data.pointsToWin,
             answerViewTime: data.answerViewTime,
             status: 'waiting',
-            round: 0
+            round: 0,
+            currentSmartIndex: 0 // Track the index of the current smart player
         };
         gameState.rooms[roomId] = room;
         socket.join(roomId);
@@ -407,12 +408,13 @@ io.on('connection', (socket) => {
             }
         }, 30000); // 30 seconds to click button
     };
-    // Modify startGame to use the new timeout setup
+    // Fix startGame to assign the smart role to the first player
     socket.on('startGame', (roomId) => {
         const room = gameState.rooms[roomId];
         if (!room || room.status !== 'waiting')
             return;
         room.status = 'playing';
+        room.currentSmartIndex = 0; // First player is smart in first round
         // Use cached images
         const files = Array.from(imageCache.keys());
         if (files.length === 0) {
@@ -426,12 +428,11 @@ io.on('connection', (socket) => {
             answer: `/images/back/${randomFile}`
         };
         room.currentQuestion = question;
-        // Optimize role assignment
-        const playerCount = room.players.length;
-        const smartIndex = Math.floor(Math.random() * playerCount);
+        // Sequential role assignment for smart player (first player in first round)
+        const smartIndex = room.currentSmartIndex;
         let honestIndex;
         do {
-            honestIndex = Math.floor(Math.random() * playerCount);
+            honestIndex = Math.floor(Math.random() * room.players.length);
         } while (honestIndex === smartIndex);
         room.players.forEach((p, i) => {
             p.role = i === smartIndex ? 'smart' : i === honestIndex ? 'honest' : 'liar';
@@ -467,7 +468,7 @@ io.on('connection', (socket) => {
             }
         }
     });
-    // 大聪明投票
+    // Fix the automatic next game logic in vote handler
     socket.on('vote', (data) => {
         const { roomId, honestTargetId, liarTargetId } = data;
         const room = gameState.rooms[roomId];
@@ -536,6 +537,8 @@ io.on('connection', (socket) => {
                         room.round += 1;
                         room.voteResult = undefined;
                         room.answerReveal = undefined;
+                        // Update the smart player index for the next round (safely handle undefined)
+                        room.currentSmartIndex = ((room.currentSmartIndex ?? 0) + 1) % room.players.length;
                         // 重置玩家状态
                         room.players.forEach(player => {
                             player.hasUsedHonestButton = false;
@@ -553,16 +556,17 @@ io.on('connection', (socket) => {
                             answer: `/images/back/${randomFile}`
                         };
                         room.currentQuestion = question;
-                        // 重新随机分配角色
-                        const players = room.players;
-                        players.forEach(p => p.role = 'liar');
-                        const smartIndex = Math.floor(Math.random() * players.length);
-                        let honestIndex = Math.floor(Math.random() * players.length);
-                        while (honestIndex === smartIndex && players.length > 1) {
-                            honestIndex = Math.floor(Math.random() * players.length);
-                        }
-                        players[smartIndex].role = 'smart';
-                        players[honestIndex].role = 'honest';
+                        // Sequential role assignment for smart player
+                        const smartIndex = room.currentSmartIndex;
+                        let honestIndex;
+                        do {
+                            honestIndex = Math.floor(Math.random() * room.players.length);
+                        } while (honestIndex === smartIndex);
+                        // Reset all roles to liar first
+                        room.players.forEach(p => p.role = 'liar');
+                        // Assign smart and honest roles
+                        room.players[smartIndex].role = 'smart';
+                        room.players[honestIndex].role = 'honest';
                         // Setup timeout for honest player
                         setupHonestPlayerTimeout(roomId);
                         // 通知所有玩家新游戏开始
@@ -575,7 +579,7 @@ io.on('connection', (socket) => {
             }
         }
     });
-    // 开始下一局游戏
+    // Fix nextGame to use the tracked smart player index
     socket.on('nextGame', (roomId) => {
         const room = gameState.rooms[roomId];
         if (room) {
@@ -584,6 +588,8 @@ io.on('connection', (socket) => {
             room.round += 1;
             room.voteResult = undefined;
             room.answerReveal = undefined;
+            // Update the smart player index for the next round (safely handle undefined)
+            room.currentSmartIndex = ((room.currentSmartIndex ?? 0) + 1) % room.players.length;
             // 重置玩家状态
             room.players.forEach(player => {
                 player.hasUsedHonestButton = false;
@@ -603,16 +609,19 @@ io.on('connection', (socket) => {
                 answer: `/images/back/${randomFile}`
             };
             room.currentQuestion = question;
-            // 重新随机分配角色
-            const players = room.players;
-            players.forEach(p => p.role = 'liar');
-            const smartIndex = Math.floor(Math.random() * players.length);
-            let honestIndex = Math.floor(Math.random() * players.length);
-            while (honestIndex === smartIndex && players.length > 1) {
-                honestIndex = Math.floor(Math.random() * players.length);
-            }
-            players[smartIndex].role = 'smart';
-            players[honestIndex].role = 'honest';
+            // Use the tracked smart player index
+            const smartIndex = room.currentSmartIndex;
+            let honestIndex;
+            do {
+                honestIndex = Math.floor(Math.random() * room.players.length);
+            } while (honestIndex === smartIndex);
+            // Reset all roles to liar first
+            room.players.forEach(p => p.role = 'liar');
+            // Assign smart and honest roles
+            room.players[smartIndex].role = 'smart';
+            room.players[honestIndex].role = 'honest';
+            // Setup timeout for honest player
+            setupHonestPlayerTimeout(roomId);
             // 通知所有玩家新游戏开始
             io.to(roomId).emit('nextGameStarted', {
                 room,

@@ -1,6 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, Button, Paper, ButtonGroup, Tooltip, Divider, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Paper, ButtonGroup, Tooltip, Divider, CircularProgress, Avatar, Chip } from '@mui/material';
 import { Socket } from 'socket.io-client';
+import { PeopleAlt, PlayArrow } from '@mui/icons-material';
+
+// Helper function to generate consistent colors from names
+const stringToColor = (string: string) => {
+  let hash = 0;
+  for (let i = 0; i < string.length; i++) {
+    hash = string.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  let color = '#';
+  for (let i = 0; i < 3; i++) {
+    const value = (hash >> (i * 8)) & 0xFF;
+    color += ('00' + value.toString(16)).substr(-2);
+  }
+  return color;
+};
 
 interface GameRoomProps {
   roomId: string;
@@ -39,6 +54,7 @@ interface Room {
   };
   answerReveal?: { showing: boolean; endTime: number };
   gameWinner?: Player;
+  currentSmartIndex: number;
 }
 
 // Use the current window location to determine the backend URL
@@ -925,25 +941,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     }) => {
       setVoteResult(result);
       setPhase(result.isGameOver ? 'completed' : 'ended');
-
-      // Start round transition if game is not over and room exists
-      if (!result.isGameOver && room) {
-        const nextRound = (room.round ?? 0) + 1;
-        setRoundTransition({
-          active: true,
-          countdown: 5,
-          nextRound: nextRound
-        });
-
-        // Reset round transition after countdown
-        setTimeout(() => {
-          setRoundTransition({
-            active: false,
-            countdown: 5,
-            nextRound: 0
-          });
-        }, 5000);
-      }
     });
     socket.on('answerReveal', handleAnswerReveal);
     socket.on('chatMessage', handleChatMessage);
@@ -1050,63 +1047,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
   // Add score summary with type safety
   const RoleDisplay = () => {
-    if (!room?.players || phase === 'waiting') return null;
-
-    const smartPlayer = room.players.find(p => p.role === 'smart');
-    const honestPlayer = room.players.find(p => p.role === 'honest');
-    const liarPlayer = room.players.find(p => p.role === 'liar');
-
-    return (
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6" gutterBottom>本局角色</Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {smartPlayer && (
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              p: 1, 
-              bgcolor: 'primary.light',
-              color: 'white',
-              borderRadius: 1 
-            }}>
-              <Typography sx={{ flex: 1 }}>
-                大聪明：{smartPlayer.name} {smartPlayer.id === playerName && '（你）'}
-              </Typography>
-            </Box>
-          )}
-          {honestPlayer && (
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              p: 1, 
-              bgcolor: 'success.light',
-              color: 'white',
-              borderRadius: 1 
-            }}>
-              <Typography sx={{ flex: 1 }}>
-                老实人：{me?.role === 'smart' || phase === 'ended' || phase === 'completed' ? honestPlayer.name : '???'} 
-                {honestPlayer.id === playerName && '（你）'}
-              </Typography>
-            </Box>
-          )}
-          {liarPlayer && (
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              p: 1, 
-              bgcolor: 'error.light',
-              color: 'white',
-              borderRadius: 1 
-            }}>
-              <Typography sx={{ flex: 1 }}>
-                瞎掰人：{me?.role === 'smart' || phase === 'ended' || phase === 'completed' ? liarPlayer.name : '???'} 
-                {liarPlayer.id === playerName && '（你）'}
-              </Typography>
-            </Box>
-          )}
-        </Box>
-      </Paper>
-    );
+    return null; // Removed role display component
   };
 
   // Add early return for room closure display
@@ -1189,43 +1130,86 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
         <GameProgress />
         
-        {phase !== 'waiting' && <RoleDisplay />}
-
         {/* Player Info */}
-        <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold', mb: 1 }}>
-        {myRoleLabel}
-      </Typography>
-      {smartPlayer && (
-                <Typography color="secondary">
-          本轮大聪明：{smartPlayer.name}
-        </Typography>
-      )}
-            </Box>
-            <Box sx={{ textAlign: 'right' }}>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                游戏状态：{
+        <Paper sx={{ p: 0, mb: 2, bgcolor: 'background.paper', overflow: 'hidden', borderRadius: 2, boxShadow: 2 }}>
+          <Box sx={{ 
+            bgcolor: 'primary.dark', 
+            p: 2, 
+            color: 'white', 
+            position: 'relative',
+            overflow: 'hidden',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              background: 'linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%)',
+              zIndex: 1
+            }
+          }}>
+            <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 0.5, position: 'relative', zIndex: 2 }}>
+              {myRoleLabel}
+            </Typography>
+            {smartPlayer && (
+              <Typography variant="subtitle1" sx={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center' }}>
+                <Chip 
+                  label="大聪明" 
+                  size="small" 
+                  color="secondary" 
+                  sx={{ mr: 1, fontWeight: 'bold' }}
+                />
+                {smartPlayer.name}
+              </Typography>
+            )}
+          </Box>
+          <Box sx={{ p: 2, position: 'relative', bgcolor: 'background.paper' }}>
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              pb: 2,
+              borderBottom: '1px dashed rgba(0,0,0,0.1)'
+            }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                游戏状态
+              </Typography>
+              <Chip 
+                label={
                   phase === 'waiting' ? '等待开始' :
                   phase === 'playing' ? '游戏进行中' :
                   phase === 'voting' ? '投票环节' :
-                  phase === 'ended' ? '本轮结束' :
-                  '游戏结束'
+                  phase === 'ended' ? '本轮结束' : '游戏结束'
                 }
-              </Typography>
-              {phase === 'playing' && isSmart && (
-                <Button 
-                  variant="contained" 
-                  color="secondary" 
-                  onClick={handleStartVoting} 
-                  disabled={!canStartVoting}
-                  sx={{ mt: 1 }}
-                >
-                  进入投票环节
-                </Button>
-              )}
+                color={
+                  phase === 'waiting' ? 'default' :
+                  phase === 'playing' ? 'primary' :
+                  phase === 'voting' ? 'secondary' :
+                  phase === 'ended' ? 'success' : 'error'
+                }
+                variant="filled"
+                size="medium"
+                sx={{ fontWeight: 'bold' }}
+              />
             </Box>
+            {phase === 'playing' && isSmart && (
+              <Button 
+                variant="contained" 
+                color="secondary" 
+                onClick={handleStartVoting} 
+                disabled={!canStartVoting}
+                sx={{ 
+                  mt: 2,
+                  width: '100%',
+                  py: 1,
+                  borderRadius: 2,
+                  boxShadow: 2
+                }}
+              >
+                进入投票环节
+              </Button>
+            )}
           </Box>
         </Paper>
 
@@ -1247,27 +1231,49 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
             </Button>
           )}
           <Box sx={{ mt: 2 }}>
-                <Typography variant="h6" gutterBottom>玩家列表：</Typography>
+                <Typography variant="h6" gutterBottom color="primary">玩家列表</Typography>
             {room.players.map(player => (
                   <Paper 
                     key={player.id} 
                     sx={{ 
-                      p: 1, 
-                      mb: 1, 
+                      p: 2, 
+                      mb: 1.5, 
                       display: 'flex', 
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      bgcolor: player.id === playerName ? 'action.selected' : 'background.paper'
+                      bgcolor: player.id === playerName ? 'action.selected' : 'background.paper',
+                      borderRadius: 2,
+                      boxShadow: 2,
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: 3,
+                      }
                     }}
                   >
-                    <Typography>
-                      {player.name} 
-                      {player.id === playerName && ' （你）'} 
-                      {player.id === room.players[0]?.id && ' （房主）'}
-                    </Typography>
-                    <Typography>
-                      分数：{player.score}
-              </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Avatar sx={{ bgcolor: stringToColor(player.name), mr: 1.5 }}>
+                        {player.name.charAt(0).toUpperCase()}
+                      </Avatar>
+                      <Typography fontWeight={player.id === playerName ? 'bold' : 'normal'}>
+                        {player.name} 
+                        {player.id === playerName && ' （你）'} 
+                        {player.id === room.players[0]?.id && (
+                          <Chip 
+                            size="small" 
+                            label="房主" 
+                            color="primary" 
+                            variant="outlined" 
+                            sx={{ ml: 1, height: 20 }} 
+                          />
+                        )}
+                      </Typography>
+                    </Box>
+                    <Chip 
+                      label={`${player.score} 分`} 
+                      color={player.score > 0 ? 'success' : 'default'}
+                      variant={player.score > 0 ? 'filled' : 'outlined'}
+                    />
                   </Paper>
             ))}
           </Box>
@@ -1352,19 +1358,141 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
               <Typography variant="h6" color="primary" gutterBottom>本轮得分：</Typography>
               <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
-                <Typography>
-                  大聪明：{voteResult.pointsEarned} 分
-                </Typography>
-                {!voteResult.isHonestCorrect && (
-                  <>
-                    <Typography sx={{ mt: 1 }}>
-                      老实人：3 分（成功隐藏身份）
-                    </Typography>
-                    <Typography sx={{ mt: 1 }}>
-                      瞎掰人：1 分（成功误导）
-                    </Typography>
-                  </>
-                )}
+                {room.players.map(player => {
+                  const isSmartPlayer = player.id === voteResult.voterId;
+                  const isHonestPlayer = player.role === 'honest';
+                  const isLiarPlayer = player.role === 'liar';
+                  
+                  // Calculate score changes based on the new rules
+                  let scoreChange = 0;
+                  let explanation = '';
+                  
+                  if (isSmartPlayer) {
+                    if (voteResult.isHonestCorrect) {
+                      scoreChange = voteResult.pointsEarned;
+                      explanation = '✅ 成功找出老实人！';
+                    } else {
+                      scoreChange = -2;
+                      explanation = '❌ 没有找出老实人（-2分）';
+                    }
+                  } else if (isHonestPlayer) {
+                    if (!voteResult.isHonestCorrect) {
+                      scoreChange = 3;
+                      explanation = '✅ 成功隐藏身份（+3分）';
+                    } else {
+                      scoreChange = 0;
+                      explanation = '❌ 身份被识破';
+                    }
+                  } else if (isLiarPlayer) {
+                    if (!voteResult.isHonestCorrect) {
+                      scoreChange = 1;
+                      explanation = '✅ 成功误导大聪明（+1分）';
+                    } else {
+                      scoreChange = -1;
+                      explanation = '❌ 被大聪明识破（-1分）';
+                    }
+                  }
+
+                  return (
+                    <Box 
+                      key={player.id}
+                      sx={{ 
+                        mb: 2,
+                        p: 2,
+                        borderRadius: 2,
+                        bgcolor: 'background.paper',
+                        boxShadow: 1,
+                        border: '1px solid',
+                        borderColor: isSmartPlayer ? 'primary.main' : 
+                                   isHonestPlayer ? 'success.main' : 
+                                   'warning.main',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        '&::before': {
+                          content: '""',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '4px',
+                          height: '100%',
+                          bgcolor: isSmartPlayer ? 'primary.main' : 
+                                   isHonestPlayer ? 'success.main' : 
+                                   'warning.main'
+                        }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar 
+                            sx={{ 
+                              bgcolor: isSmartPlayer ? 'primary.main' : 
+                                      isHonestPlayer ? 'success.main' : 
+                                      'warning.main'
+                            }}
+                          >
+                            {player.name.charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Typography variant="h6">
+                            {player.name}
+                          </Typography>
+                        </Box>
+                        <Chip 
+                          label={isSmartPlayer ? '大聪明' : 
+                                isHonestPlayer ? '老实人' : 
+                                '瞎掰人'}
+                          color={isSmartPlayer ? 'primary' : 
+                                isHonestPlayer ? 'success' : 
+                                'warning'}
+                          variant="outlined"
+                          sx={{ fontWeight: 'bold' }}
+                        />
+                      </Box>
+                      
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+                        <Typography variant="body1" sx={{ flex: 1 }}>
+                          {explanation}
+                        </Typography>
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 1,
+                          bgcolor: 'background.default',
+                          p: 1,
+                          borderRadius: 1
+                        }}>
+                          <Typography 
+                            variant="h6" 
+                            sx={{ 
+                              color: scoreChange > 0 ? 'success.main' : 
+                                     scoreChange < 0 ? 'error.main' : 
+                                     'text.secondary',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            {scoreChange > 0 ? '+' : ''}{scoreChange}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">分</Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })}
+
+                {/* Add scoring rules explanation */}
+                <Box sx={{ mt: 3, p: 2, bgcolor: 'info.main', color: 'white', borderRadius: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    计分规则：
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    • 大聪明胜利：正确指认 → 全体瞎掰人各扣1分
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    • 老实人胜利：未被发现 → 大聪明扣2分，老实人+3分
+                  </Typography>
+                  <Typography variant="body2">
+                    • 瞎掰人胜利：大聪明指错人 → 每个成功误导的瞎掰人+1分
+                  </Typography>
+                </Box>
               </Paper>
               
               {phase === 'completed' && voteResult?.gameWinner && (
@@ -1408,33 +1536,85 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                   }
                 </Paper>
               )}
+
+              {/* Add Next Question Button for Host */}
+              {isRoomCreator && phase === 'ended' && !voteResult.isGameOver && (
+                <Box sx={{ mt: 3, textAlign: 'center' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    onClick={handleNextGame}
+                    startIcon={<PlayArrow />}
+                    sx={{ 
+                      py: 1.5,
+                      px: 4,
+                      borderRadius: 2,
+                      boxShadow: 3,
+                      transition: 'transform 0.2s',
+                      '&:hover': {
+                        transform: 'scale(1.05)',
+                        boxShadow: 4
+                      }
+                    }}
+                  >
+                    进入下一题
+                  </Button>
+                </Box>
+              )}
         </Box>
       )}
         </Paper>
 
         {/* Player List */}
         {phase !== 'waiting' && (
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>玩家列表：</Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          <Paper sx={{ p: 3, borderRadius: 2, boxShadow: 3 }}>
+            <Typography variant="h6" gutterBottom color="primary" sx={{ display: 'flex', alignItems: 'center' }}>
+              <PeopleAlt sx={{ mr: 1 }} /> 玩家列表
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
               {room.players.map(player => (
                 <Paper 
                   key={player.id}
                   sx={{ 
-                    p: 1,
+                    p: 2,
                     flex: '1 1 200px',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    bgcolor: player.id === playerName ? 'action.selected' : 'background.paper'
+                    bgcolor: player.id === playerName ? 'action.selected' : 'background.paper',
+                    borderRadius: 2,
+                    boxShadow: 1,
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: 2,
+                    }
                   }}
                 >
-                  <Typography>
-                    {player.name} {player.id === playerName && '（你）'}
-                  </Typography>
-                  <Typography>
-                    分数：{player.score}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Avatar sx={{ bgcolor: stringToColor(player.name), mr: 1.5 }}>
+                      {player.name.charAt(0).toUpperCase()}
+                    </Avatar>
+                    <Typography fontWeight={player.id === playerName ? 'bold' : 'normal'}>
+                      {player.name} 
+                      {player.id === playerName && (
+                        <Chip 
+                          size="small" 
+                          label="你" 
+                          color="secondary" 
+                          variant="outlined" 
+                          sx={{ ml: 1, height: 20 }} 
+                        />
+                      )}
+                    </Typography>
+                  </Box>
+                  <Chip 
+                    label={`${player.score} 分`} 
+                    color={player.score > 0 ? 'success' : 'default'}
+                    variant={player.score > 0 ? 'filled' : 'outlined'}
+                    sx={{ fontWeight: 'bold' }}
+                  />
                 </Paper>
               ))}
             </Box>
