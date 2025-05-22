@@ -7,8 +7,8 @@ interface CreateRoomProps {
   onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;
 }
 
-// const serverUrl = 'http://8.148.30.163:3001';
-const serverUrl = 'http://localhost:3001';
+const serverUrl = 'http://8.148.30.163:3001';
+// const serverUrl = 'http://localhost:3001';
 
 interface RoomInfo {
   id: string;
