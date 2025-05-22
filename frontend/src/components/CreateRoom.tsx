@@ -70,7 +70,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   useEffect(() => {
     const serverUrl = 'http://8.148.30.163:3001';
     const serverUrl_d = 'http://localhost:3001';
-    const newSocket = io(serverUrl_d, {
+    const newSocket = io(serverUrl, {
       transports: ['polling'],
       withCredentials: true,
       reconnectionAttempts: 5,
