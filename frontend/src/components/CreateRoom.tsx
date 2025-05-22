@@ -7,6 +7,9 @@ interface CreateRoomProps {
   onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;
 }
 
+// const serverUrl = 'http://8.148.30.163:3001';
+const serverUrl = 'http://localhost:3001';
+
 interface RoomInfo {
   id: string;
   playerCount: number;
@@ -67,9 +70,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   }, []);
 
   // Initialize socket connection when component mounts
-  useEffect(() => {
-    const serverUrl = 'http://8.148.30.163:3001';
-    const serverUrl_d = 'http://localhost:3001';
+  useEffect(() => { 
     const newSocket = io(serverUrl, {
       transports: ['polling'],
       withCredentials: true,
@@ -121,9 +122,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       socket.off('playerJoined');
       socket.off('error');
     }
-
-    const serverUrl = 'http://8.148.30.163:3001';
-    const serverUrl_d = 'http://localhost:3001';
+ 
     const newSocket = io(serverUrl, {
       transports: ['polling'],
       withCredentials: true,

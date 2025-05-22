@@ -12,6 +12,9 @@ const httpServer = createServer(app);
 // Add player session store
 const playerSessions: { [key: string]: { playerId: string, roomId: string, playerName: string } } = {};
 
+// Add voice chat participants tracking with peer IDs
+const voiceParticipants: { [roomId: string]: Map<string, string> } = {}; // Map of playerId -> peerId
+
 // Add closed rooms tracking
 const closedRooms: { [key: string]: { message: string; closedAt: number } } = {};
 
@@ -33,6 +36,12 @@ const removePlayerFromAllRooms = (playerId: string) => {
             }
         }
         delete playerSessions[playerId];
+        
+        // Remove from voice participants if present
+        if (voiceParticipants[session.roomId]) {
+            voiceParticipants[session.roomId].delete(playerId);
+            broadcastVoiceParticipants(session.roomId);
+        }
     }
 };
 
@@ -120,6 +129,20 @@ setInterval(() => {
     });
 }, 1000 * 60 * 5); // Check every 5 minutes
 
+// Function to broadcast voice participants in a room
+const broadcastVoiceParticipants = (roomId: string) => {
+    const participants = voiceParticipants[roomId] || new Map();
+    const participantsArray = Array.from(participants).map(([userId, peerId]) => ({
+        userId,
+        peerId
+    }));
+    
+    io.to(roomId).emit('voice-users', {
+        users: participantsArray.map(p => p.userId),
+        peerIds: Object.fromEntries(participants)
+    });
+};
+
 // Optimize room list broadcasting
 const getRoomListData = () => {
     const now = Date.now();
@@ -205,6 +228,9 @@ io.engine.opts.pingTimeout = 5000; // Reduce ping timeout
 // Socket.IO 连接处理
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
+    let currentPlayerId = "";
+    let currentRoomId = "";
+    let currentPlayerName = "";
 
     // Handle reconnection
     socket.on('reconnect', (data: { playerId: string }) => {
@@ -282,6 +308,19 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('playerId', playerName);
             io.to(roomId).emit('playerJoined', room);
+            
+            // Store current player information in socket scope
+            currentPlayerId = socket.id;
+            currentRoomId = roomId;
+            currentPlayerName = playerName;
+            
+            // Also store in player sessions
+            playerSessions[socket.id] = {
+                playerId: socket.id,
+                roomId: roomId,
+                playerName: playerName
+            };
+            
             broadcastRoomList();
             return;
         }
@@ -305,6 +344,11 @@ io.on('connection', (socket) => {
             lastUpdate: Date.now()
         });
 
+        // Store current player information in socket scope
+        currentPlayerId = socket.id;
+        currentRoomId = roomId;
+        currentPlayerName = playerName;
+        
         socket.emit('playerId', playerName);
         io.to(roomId).emit('playerJoined', room);
         broadcastRoomList();
@@ -757,6 +801,100 @@ io.on('connection', (socket) => {
         }
     });
 
+    // WebRTC voice chat signaling for PeerJS
+    socket.on('store-peer-id', (data) => {
+        const { roomId, peerId } = data;
+        const playerId = currentPlayerId;
+        
+        if (!playerId || !roomId || !peerId) {
+            console.error('Missing data for store-peer-id:', { playerId, roomId, peerId });
+            return;
+        }
+        
+        // Store the peer ID for this player
+        if (!voiceParticipants[roomId]) {
+            voiceParticipants[roomId] = new Map();
+        }
+        
+        voiceParticipants[roomId].set(playerId, peerId);
+        console.log(`Stored peer ID ${peerId} for player ${playerId} in room ${roomId}`);
+        
+        // Also broadcast updated participants to sync everyone
+        broadcastVoiceParticipants(roomId);
+    });
+    
+    socket.on('join-voice', (data) => {
+        const { roomId, peerId } = data;
+        const playerId = currentPlayerId;
+        
+        console.log('Join voice request:', { roomId, peerId, playerId });
+        
+        if (!playerId || !roomId) {
+            socket.emit('error', '未找到玩家或房间信息');
+            return;
+        }
+        
+        // Initialize room's voice participants if needed
+        if (!voiceParticipants[roomId]) {
+            voiceParticipants[roomId] = new Map();
+        }
+        
+        // Add player to voice participants
+        if (peerId) {
+            voiceParticipants[roomId].set(playerId, peerId);
+            console.log(`Added player ${playerId} with peer ID ${peerId} to voice chat in room ${roomId}`);
+        } else {
+            console.warn(`No peer ID provided for player ${playerId} joining voice chat`);
+        }
+        
+        // Join socket to the voice room
+        socket.join(`voice:${roomId}`);
+        
+        // Notify room members of the new participant
+        socket.to(roomId).emit('user-joined-voice', {
+            userId: playerId,
+            peerId: peerId
+        });
+        
+        // Send the current list of voice participants to all clients in the room
+        broadcastVoiceParticipants(roomId);
+        
+        // Also send directly to the joining user to ensure they get it
+        socket.emit('voice-users', {
+            users: Array.from(voiceParticipants[roomId].keys()),
+            peerIds: Object.fromEntries(voiceParticipants[roomId])
+        });
+        
+        console.log(`Player ${playerId} joined voice chat in room ${roomId} with peer ID ${peerId}`);
+        console.log('Current voice participants:', Array.from(voiceParticipants[roomId].entries()));
+    });
+
+    socket.on('leave-voice', (data) => {
+        const { roomId } = data;
+        const playerId = currentPlayerId;
+        
+        console.log('Leave voice request:', { roomId, playerId });
+        
+        if (voiceParticipants[roomId]) {
+            // Remove player from voice participants
+            voiceParticipants[roomId].delete(playerId);
+            
+            // Leave the voice room
+            socket.leave(`voice:${roomId}`);
+            
+            // Notify others that this player left voice
+            socket.to(roomId).emit('user-left-voice', {
+                userId: playerId
+            });
+            
+            // Update the list of voice participants
+            broadcastVoiceParticipants(roomId);
+            
+            console.log(`Player ${playerId} left voice chat in room ${roomId}`);
+            console.log('Current voice participants:', Array.from(voiceParticipants[roomId].entries()));
+        }
+    });
+
     // Clean up timeouts when socket disconnects
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
@@ -790,6 +928,15 @@ io.on('connection', (socket) => {
                 }
             }
         });
+        
+        // Handle voice chat cleanup on disconnect
+        if (currentPlayerId && currentRoomId && voiceParticipants[currentRoomId]) {
+            voiceParticipants[currentRoomId].delete(currentPlayerId);
+            socket.to(currentRoomId).emit('user-left-voice', {
+                userId: currentPlayerId
+            });
+            broadcastVoiceParticipants(currentRoomId);
+        }
     });
 
     // Move chat message handler outside of disconnect handler

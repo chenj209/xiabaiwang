@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Typography, Button, Paper, ButtonGroup, Tooltip, Divider, CircularProgress, Avatar, Chip } from '@mui/material';
 import { Socket } from 'socket.io-client';
-import { PeopleAlt, PlayArrow } from '@mui/icons-material';
+import { PeopleAlt, PlayArrow, Mic } from '@mui/icons-material';
+import VoiceChat from './VoiceChat';
 
 // Helper function to generate consistent colors from names
 const stringToColor = (string: string) => {
@@ -519,6 +520,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     nextRound: number;
   }>({ active: false, countdown: 5, nextRound: 0 });
 
+  // Add this line to track player ID
+  const [playerId, setPlayerId] = useState<string>("");
+
   // Memoize computed values
   const me = useMemo(() => room?.players.find(p => p.name === playerName), [room, playerName]);
   const isSmart = useMemo(() => me?.role === 'smart', [me]);
@@ -804,7 +808,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     setLiarVoteTarget(playerId);
   }, []);
 
-  // Modify socket event handlers to handle reconnection
+  // Update the useEffect to store player ID
   useEffect(() => {
     const handlePlayerJoined = (updatedRoom: Room) => {
       console.log('Room updated:', updatedRoom);
@@ -915,8 +919,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     socket.on('gameStarted', handleGameStarted);
     socket.on('nextGameStarted', handleNextGameStarted);
     socket.on('roomClosed', handleRoomClosed);
-    socket.on('playerId', (newPlayerId: string) => {
-      console.log('Received player ID:', newPlayerId);
+    socket.on('playerId', (id: string) => {
+      console.log('Got player ID:', id);
+      setPlayerId(id);
     });
     socket.on('showAnswer', (answer: string) => {
       setAnswer(answer);
@@ -1130,6 +1135,55 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
         <GameProgress />
         
+        {/* Voice Chat */}
+        {room && playerId && (
+          <Paper sx={{ 
+            p: 2, 
+            mb: 2, 
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 2,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '3px',
+              background: 'linear-gradient(90deg, #1976d2, #64b5f6)',
+            }
+          }}>
+            <Box sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 1
+            }}>
+              <Typography 
+                variant="subtitle1" 
+                color="primary"
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  gap: 1,
+                  fontWeight: 500
+                }}
+              >
+                <Mic fontSize="small" />
+                语音聊天
+              </Typography>
+            </Box>
+            <VoiceChat 
+              socket={socket}
+              roomId={roomId}
+              playerId={playerId}
+              players={room.players} 
+            />
+          </Paper>
+        )}
+        
         {/* Player Info */}
         <Paper sx={{ p: 0, mb: 2, bgcolor: 'background.paper', overflow: 'hidden', borderRadius: 2, boxShadow: 2 }}>
           <Box sx={{ 
@@ -1255,9 +1309,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                       <Avatar sx={{ bgcolor: stringToColor(player.name), mr: 1.5 }}>
                         {player.name.charAt(0).toUpperCase()}
                       </Avatar>
-                      <Typography fontWeight={player.id === playerName ? 'bold' : 'normal'}>
-                        {player.name} 
-                        {player.id === playerName && ' （你）'} 
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography fontWeight={player.id === playerName ? 'bold' : 'normal'}>
+                          {player.name} 
+                          {player.id === playerName && ' （你）'} 
+                        </Typography>
                         {player.id === room.players[0]?.id && (
                           <Chip 
                             size="small" 
@@ -1267,7 +1323,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                             sx={{ ml: 1, height: 20 }} 
                           />
                         )}
-                      </Typography>
+                      </Box>
                     </Box>
                     <Chip 
                       label={`${player.score} 分`} 
@@ -1596,18 +1652,21 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                     <Avatar sx={{ bgcolor: stringToColor(player.name), mr: 1.5 }}>
                       {player.name.charAt(0).toUpperCase()}
                     </Avatar>
-                    <Typography fontWeight={player.id === playerName ? 'bold' : 'normal'}>
-                      {player.name} 
-                      {player.id === playerName && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Typography fontWeight={player.id === playerName ? 'bold' : 'normal'}>
+                        {player.name} 
+                        {player.id === playerName && ' （你）'} 
+                      </Typography>
+                      {player.id === room.players[0]?.id && (
                         <Chip 
                           size="small" 
-                          label="你" 
-                          color="secondary" 
+                          label="房主" 
+                          color="primary" 
                           variant="outlined" 
                           sx={{ ml: 1, height: 20 }} 
                         />
                       )}
-                    </Typography>
+                    </Box>
                   </Box>
                   <Chip 
                     label={`${player.score} 分`} 
@@ -1629,8 +1688,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
           onSendMessage={handleSendMessage}
         />
         </Box>
-    </Box>
-  );
+      </Box>
+    );
 };
 
 export default GameRoom; 

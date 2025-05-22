@@ -13,6 +13,8 @@ const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
 // Add player session store
 const playerSessions = {};
+// Add voice chat participants tracking with peer IDs
+const voiceParticipants = {}; // Map of playerId -> peerId
 // Add closed rooms tracking
 const closedRooms = {};
 // Add efficient room data caching
@@ -29,6 +31,11 @@ const removePlayerFromAllRooms = (playerId) => {
             }
         }
         delete playerSessions[playerId];
+        // Remove from voice participants if present
+        if (voiceParticipants[session.roomId]) {
+            voiceParticipants[session.roomId].delete(playerId);
+            broadcastVoiceParticipants(session.roomId);
+        }
     }
 };
 // Add request logging middleware
@@ -103,6 +110,18 @@ setInterval(() => {
         }
     });
 }, 1000 * 60 * 5); // Check every 5 minutes
+// Function to broadcast voice participants in a room
+const broadcastVoiceParticipants = (roomId) => {
+    const participants = voiceParticipants[roomId] || new Map();
+    const participantsArray = Array.from(participants).map(([userId, peerId]) => ({
+        userId,
+        peerId
+    }));
+    io.to(roomId).emit('voice-users', {
+        users: participantsArray.map(p => p.userId),
+        peerIds: Object.fromEntries(participants)
+    });
+};
 // Optimize room list broadcasting
 const getRoomListData = () => {
     const now = Date.now();
@@ -122,11 +141,14 @@ const getRoomListData = () => {
         totalRounds: room.totalRounds,
         pointsToWin: room.pointsToWin,
         answerViewTime: room.answerViewTime,
-        players: room.players.map(p => ({
-            name: p.name,
-            score: p.score,
-            isCreator: p.id === room.players[0]?.id
-        }))
+        players: room.players.map(p => {
+            var _a;
+            return ({
+                name: p.name,
+                score: p.score,
+                isCreator: p.id === ((_a = room.players[0]) === null || _a === void 0 ? void 0 : _a.id)
+            });
+        })
     }));
     // Cache the result
     roomCache.set(cacheKey, {
@@ -180,6 +202,9 @@ io.engine.opts.pingTimeout = 5000; // Reduce ping timeout
 // Socket.IO 连接处理
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
+    let currentPlayerId = "";
+    let currentRoomId = "";
+    let currentPlayerName = "";
     // Handle reconnection
     socket.on('reconnect', (data) => {
         const session = playerSessions[data.playerId];
@@ -249,6 +274,16 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('playerId', playerName);
             io.to(roomId).emit('playerJoined', room);
+            // Store current player information in socket scope
+            currentPlayerId = socket.id;
+            currentRoomId = roomId;
+            currentPlayerName = playerName;
+            // Also store in player sessions
+            playerSessions[socket.id] = {
+                playerId: socket.id,
+                roomId: roomId,
+                playerName: playerName
+            };
             broadcastRoomList();
             return;
         }
@@ -268,6 +303,10 @@ io.on('connection', (socket) => {
             roomData: room,
             lastUpdate: Date.now()
         });
+        // Store current player information in socket scope
+        currentPlayerId = socket.id;
+        currentRoomId = roomId;
+        currentPlayerName = playerName;
         socket.emit('playerId', playerName);
         io.to(roomId).emit('playerJoined', room);
         broadcastRoomList();
@@ -280,10 +319,11 @@ io.on('connection', (socket) => {
     });
     // 离开游戏
     socket.on('leaveGame', (data) => {
+        var _a;
         const { roomId, playerId } = data;
         const room = gameState.rooms[roomId];
         if (room) {
-            const isCreator = playerId === room.players[0]?.id;
+            const isCreator = playerId === ((_a = room.players[0]) === null || _a === void 0 ? void 0 : _a.id);
             room.players = room.players.filter(p => p.id !== playerId);
             if (isCreator || room.players.length === 0) {
                 // Store closed room state
@@ -313,10 +353,11 @@ io.on('connection', (socket) => {
     let honestPlayerTimeouts = {};
     // Add honest player button handler
     socket.on('useHonestButton', (roomId) => {
+        var _a;
         console.log('Honest button clicked for room:', roomId);
         const room = gameState.rooms[roomId];
         if (!room || room.status !== 'playing') {
-            console.log('Invalid room state:', room?.status);
+            console.log('Invalid room state:', room === null || room === void 0 ? void 0 : room.status);
             return;
         }
         const player = room.players.find(p => p.id === socket.id && p.role === 'honest');
@@ -335,7 +376,7 @@ io.on('connection', (socket) => {
         socket.emit('answerReveal', {
             showing: true,
             endTime,
-            answer: room.currentQuestion?.answer,
+            answer: (_a = room.currentQuestion) === null || _a === void 0 ? void 0 : _a.answer,
             timeInSeconds: room.answerViewTime
         });
         // Notify other players (without showing answer)
@@ -346,7 +387,8 @@ io.on('connection', (socket) => {
         });
         // Set timeout to hide answer
         setTimeout(() => {
-            if (room.answerReveal?.showing) {
+            var _a;
+            if ((_a = room.answerReveal) === null || _a === void 0 ? void 0 : _a.showing) {
                 room.answerReveal = { showing: false, endTime: 0 };
                 io.to(roomId).emit('answerReveal', { showing: false, endTime: 0 });
                 io.to(roomId).emit('playerJoined', room);
@@ -369,7 +411,8 @@ io.on('connection', (socket) => {
         }
         // Set new timeout
         honestPlayerTimeouts[roomId] = setTimeout(() => {
-            if (!room || !room.players.find(p => p.role === 'honest')?.hasUsedHonestButton) {
+            var _a, _b;
+            if (!room || !((_a = room.players.find(p => p.role === 'honest')) === null || _a === void 0 ? void 0 : _a.hasUsedHonestButton)) {
                 const player = room.players.find(p => p.role === 'honest');
                 if (player && !player.hasUsedHonestButton) {
                     console.log('Forcing honest player to view answer:', player.name);
@@ -381,7 +424,7 @@ io.on('connection', (socket) => {
                     io.to(player.id).emit('answerReveal', {
                         showing: true,
                         endTime,
-                        answer: room.currentQuestion?.answer,
+                        answer: (_b = room.currentQuestion) === null || _b === void 0 ? void 0 : _b.answer,
                         timeInSeconds: room.answerViewTime
                     });
                     // Notify others
@@ -396,7 +439,8 @@ io.on('connection', (socket) => {
                     });
                     // Set timeout to hide answer
                     setTimeout(() => {
-                        if (room.answerReveal?.showing) {
+                        var _a;
+                        if ((_a = room.answerReveal) === null || _a === void 0 ? void 0 : _a.showing) {
                             room.answerReveal = { showing: false, endTime: 0 };
                             io.to(roomId).emit('answerReveal', { showing: false, endTime: 0 });
                             io.to(roomId).emit('playerJoined', room);
@@ -452,8 +496,9 @@ io.on('connection', (socket) => {
     };
     // 进入投票环节（只有大聪明可以发起）
     socket.on('startVoting', (roomId) => {
+        var _a;
         const room = gameState.rooms[roomId];
-        if (room && room.status === 'playing' && !room.answerReveal?.showing) {
+        if (room && room.status === 'playing' && !((_a = room.answerReveal) === null || _a === void 0 ? void 0 : _a.showing)) {
             const honestPlayer = room.players.find(p => p.role === 'honest');
             if (!honestPlayer || !honestPlayer.hasUsedHonestButton) {
                 socket.emit('error', '老实人还未查看答案');
@@ -470,6 +515,7 @@ io.on('connection', (socket) => {
     });
     // Fix the automatic next game logic in vote handler
     socket.on('vote', (data) => {
+        var _a;
         const { roomId, honestTargetId, liarTargetId } = data;
         const room = gameState.rooms[roomId];
         if (room && room.status === 'voting') {
@@ -484,14 +530,14 @@ io.on('connection', (socket) => {
                 room.status = 'ended';
                 // Award points for correct identifications
                 let pointsEarned = 0;
-                const isHonestCorrect = honestTargetId === honestPlayer?.id;
+                const isHonestCorrect = honestTargetId === (honestPlayer === null || honestPlayer === void 0 ? void 0 : honestPlayer.id);
                 // Points for 大聪明
                 if (isHonestCorrect) {
                     pointsEarned += 2; // 2 points for correctly identifying 老实人
                 }
                 if (liarTargetId) {
                     const targetPlayer = room.players.find(p => p.id === liarTargetId);
-                    if (targetPlayer?.role === 'liar') {
+                    if ((targetPlayer === null || targetPlayer === void 0 ? void 0 : targetPlayer.role) === 'liar') {
                         pointsEarned += 1; // 1 point for correctly identifying 瞎掰人
                     }
                 }
@@ -522,23 +568,24 @@ io.on('connection', (socket) => {
                     honestTargetId,
                     liarTargetId,
                     isHonestCorrect,
-                    isLiarCorrect: liarTargetId ? room.players.find(p => p.id === liarTargetId)?.role === 'liar' : undefined,
+                    isLiarCorrect: liarTargetId ? ((_a = room.players.find(p => p.id === liarTargetId)) === null || _a === void 0 ? void 0 : _a.role) === 'liar' : undefined,
                     pointsEarned,
                     smartPlayerScore: smartPlayer.score,
-                    honestPlayerScore: honestPlayer?.score,
+                    honestPlayerScore: honestPlayer === null || honestPlayer === void 0 ? void 0 : honestPlayer.score,
                     gameWinner: room.gameWinner,
                     isGameOver
                 });
                 // Automatically start next game after 5 seconds if game is not over
                 if (!isGameOver) {
                     setTimeout(() => {
+                        var _a;
                         // 重置房间状态
                         room.status = 'playing';
                         room.round += 1;
                         room.voteResult = undefined;
                         room.answerReveal = undefined;
                         // Update the smart player index for the next round (safely handle undefined)
-                        room.currentSmartIndex = ((room.currentSmartIndex ?? 0) + 1) % room.players.length;
+                        room.currentSmartIndex = (((_a = room.currentSmartIndex) !== null && _a !== void 0 ? _a : 0) + 1) % room.players.length;
                         // 重置玩家状态
                         room.players.forEach(player => {
                             player.hasUsedHonestButton = false;
@@ -581,6 +628,7 @@ io.on('connection', (socket) => {
     });
     // Fix nextGame to use the tracked smart player index
     socket.on('nextGame', (roomId) => {
+        var _a;
         const room = gameState.rooms[roomId];
         if (room) {
             // 重置房间状态
@@ -589,7 +637,7 @@ io.on('connection', (socket) => {
             room.voteResult = undefined;
             room.answerReveal = undefined;
             // Update the smart player index for the next round (safely handle undefined)
-            room.currentSmartIndex = ((room.currentSmartIndex ?? 0) + 1) % room.players.length;
+            room.currentSmartIndex = (((_a = room.currentSmartIndex) !== null && _a !== void 0 ? _a : 0) + 1) % room.players.length;
             // 重置玩家状态
             room.players.forEach(player => {
                 player.hasUsedHonestButton = false;
@@ -643,11 +691,14 @@ io.on('connection', (socket) => {
                 totalRounds: room.totalRounds,
                 pointsToWin: room.pointsToWin,
                 answerViewTime: room.answerViewTime,
-                players: room.players.map(p => ({
-                    name: p.name,
-                    score: p.score,
-                    isCreator: p.id === room.players[0]?.id
-                }))
+                players: room.players.map(p => {
+                    var _a;
+                    return ({
+                        name: p.name,
+                        score: p.score,
+                        isCreator: p.id === ((_a = room.players[0]) === null || _a === void 0 ? void 0 : _a.id)
+                    });
+                })
             }));
             console.log(`Sending ${availableRooms.length} rooms to socket ${socket.id}`);
             socket.emit('roomList', availableRooms);
@@ -657,12 +708,86 @@ io.on('connection', (socket) => {
             socket.emit('error', '获取房间列表失败');
         }
     });
+    // WebRTC voice chat signaling for PeerJS
+    socket.on('store-peer-id', (data) => {
+        const { roomId, peerId } = data;
+        const playerId = currentPlayerId;
+        if (!playerId || !roomId || !peerId) {
+            console.error('Missing data for store-peer-id:', { playerId, roomId, peerId });
+            return;
+        }
+        // Store the peer ID for this player
+        if (!voiceParticipants[roomId]) {
+            voiceParticipants[roomId] = new Map();
+        }
+        voiceParticipants[roomId].set(playerId, peerId);
+        console.log(`Stored peer ID ${peerId} for player ${playerId} in room ${roomId}`);
+        // Also broadcast updated participants to sync everyone
+        broadcastVoiceParticipants(roomId);
+    });
+    socket.on('join-voice', (data) => {
+        const { roomId, peerId } = data;
+        const playerId = currentPlayerId;
+        console.log('Join voice request:', { roomId, peerId, playerId });
+        if (!playerId || !roomId) {
+            socket.emit('error', '未找到玩家或房间信息');
+            return;
+        }
+        // Initialize room's voice participants if needed
+        if (!voiceParticipants[roomId]) {
+            voiceParticipants[roomId] = new Map();
+        }
+        // Add player to voice participants
+        if (peerId) {
+            voiceParticipants[roomId].set(playerId, peerId);
+            console.log(`Added player ${playerId} with peer ID ${peerId} to voice chat in room ${roomId}`);
+        }
+        else {
+            console.warn(`No peer ID provided for player ${playerId} joining voice chat`);
+        }
+        // Join socket to the voice room
+        socket.join(`voice:${roomId}`);
+        // Notify room members of the new participant
+        socket.to(roomId).emit('user-joined-voice', {
+            userId: playerId,
+            peerId: peerId
+        });
+        // Send the current list of voice participants to all clients in the room
+        broadcastVoiceParticipants(roomId);
+        // Also send directly to the joining user to ensure they get it
+        socket.emit('voice-users', {
+            users: Array.from(voiceParticipants[roomId].keys()),
+            peerIds: Object.fromEntries(voiceParticipants[roomId])
+        });
+        console.log(`Player ${playerId} joined voice chat in room ${roomId} with peer ID ${peerId}`);
+        console.log('Current voice participants:', Array.from(voiceParticipants[roomId].entries()));
+    });
+    socket.on('leave-voice', (data) => {
+        const { roomId } = data;
+        const playerId = currentPlayerId;
+        console.log('Leave voice request:', { roomId, playerId });
+        if (voiceParticipants[roomId]) {
+            // Remove player from voice participants
+            voiceParticipants[roomId].delete(playerId);
+            // Leave the voice room
+            socket.leave(`voice:${roomId}`);
+            // Notify others that this player left voice
+            socket.to(roomId).emit('user-left-voice', {
+                userId: playerId
+            });
+            // Update the list of voice participants
+            broadcastVoiceParticipants(roomId);
+            console.log(`Player ${playerId} left voice chat in room ${roomId}`);
+            console.log('Current voice participants:', Array.from(voiceParticipants[roomId].entries()));
+        }
+    });
     // Clean up timeouts when socket disconnects
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
         // Clean up any rooms where this socket was the creator
         Object.entries(gameState.rooms).forEach(([roomId, room]) => {
-            if (room.players[0]?.id === socket.id) {
+            var _a;
+            if (((_a = room.players[0]) === null || _a === void 0 ? void 0 : _a.id) === socket.id) {
                 // Store closed room state
                 closedRooms[roomId] = {
                     message: '房主已断开连接，房间已关闭',
@@ -691,6 +816,14 @@ io.on('connection', (socket) => {
                 }
             }
         });
+        // Handle voice chat cleanup on disconnect
+        if (currentPlayerId && currentRoomId && voiceParticipants[currentRoomId]) {
+            voiceParticipants[currentRoomId].delete(currentPlayerId);
+            socket.to(currentRoomId).emit('user-left-voice', {
+                userId: currentPlayerId
+            });
+            broadcastVoiceParticipants(currentRoomId);
+        }
     });
     // Move chat message handler outside of disconnect handler
     socket.on('chatMessage', (data) => {
