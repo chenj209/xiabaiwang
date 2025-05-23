@@ -133,9 +133,9 @@ class VoiceChat {
             
             // TURN servers for relay connections (critical for cross-network audio)
             {
-              urls: 'turn:8.148.30.163:3478',
-              username: 'turnusr',
-              credential: 'W!M/mg&GD-r}02Px6-7N'
+              server: 'turn:212.50.245.45:3478',
+              username: '475789141',
+              credential: '544413857@@'
             }, 
           ],
           // Enable multiple candidates for better connectivity
@@ -165,9 +165,7 @@ class VoiceChat {
         
         console.log(`✅ PeerJS connection opened with ID: ${id}`);
         console.log('🔧 TURN server configuration:', {
-          server: 'turn:212.50.245.45:3478',
-          username: '475789141',
-          credential: '544413857@@'
+          server: 'turn:212.50.245.45:3478', 
         });
         
         this.isVoiceActive = true;

@@ -741,11 +741,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
   // Optimize handlers
   const handleLeaveGame = useCallback(() => {
-    socket.emit('leaveGame', { roomId, playerId: playerName });
+    socket.emit('leaveGame', { roomId, playerId: socket.id });
     localStorage.removeItem('currentRoomId');
     localStorage.removeItem('currentPlayerName');
     window.location.href = '/';
-  }, [socket, roomId, playerName]);
+  }, [socket, roomId]);
 
   const handleStartGame = useCallback(() => {
     if (room && room.players.length >= 3) {
