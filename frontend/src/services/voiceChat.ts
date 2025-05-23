@@ -165,8 +165,9 @@ class VoiceChat {
         
         console.log(`✅ PeerJS connection opened with ID: ${id}`);
         console.log('🔧 TURN server configuration:', {
-          server: 'turn:8.148.30.163:3478',
-          username: 'turnusr'
+          server: 'turn:212.50.245.45:3478',
+          username: '475789141',
+          credential: '544413857@@'
         });
         
         this.isVoiceActive = true;
