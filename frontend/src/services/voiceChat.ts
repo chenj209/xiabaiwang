@@ -51,8 +51,17 @@ class VoiceChat {
     try {
       console.log("Requesting media permissions...");
       
+      // Check if we're in a secure context (HTTPS or localhost)
+      if (!window.isSecureContext) {
+        console.error("Voice chat requires HTTPS connection. Current connection is not secure.");
+        alert("语音聊天功能需要HTTPS连接。请使用HTTPS访问或在localhost环境下使用。");
+        return null;
+      }
+      
+      // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.error("getUserMedia is not supported in this browser");
+        alert("当前浏览器不支持语音聊天功能。请使用Chrome、Firefox或Edge等现代浏览器。");
         return null;
       }
       
@@ -72,8 +81,24 @@ class VoiceChat {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       console.log("Media access granted successfully");
       return stream;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to get user media:", err);
+      
+      // Provide specific error messages based on the error type
+      if (err.name === 'NotAllowedError') {
+        alert("语音聊天需要麦克风权限。请在浏览器中允许麦克风访问。");
+      } else if (err.name === 'NotFoundError') {
+        alert("未找到麦克风设备。请检查您的麦克风是否已连接。");
+      } else if (err.name === 'NotReadableError') {
+        alert("无法访问麦克风。麦克风可能被其他应用程序占用。");
+      } else if (err.name === 'OverconstrainedError') {
+        alert("麦克风设置不兼容。请尝试使用其他麦克风设备。");
+      } else if (err.name === 'NotSecureError' || err.message.includes('secure')) {
+        alert("语音聊天功能需要HTTPS连接。请使用HTTPS访问网站。");
+      } else {
+        alert(`语音聊天功能启动失败：${err.message || '未知错误'}`);
+      }
+      
       return null;
     }
   }

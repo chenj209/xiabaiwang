@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { Room, Player, Question } from './types';
@@ -53,7 +54,14 @@ app.use((req, res, next) => {
 
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
+        origin: [
+            "http://8.148.30.163", 
+            "http://8.148.30.163:3001", 
+            "https://8.148.30.163", 
+            "https://8.148.30.163:3001",
+            "http://localhost:3000",
+            "https://localhost:3000"
+        ],
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         credentials: true,
         allowedHeaders: ["Content-Type", "Authorization"]
@@ -78,7 +86,14 @@ io.engine.on("connection", (socket) => {
 
 // Configure CORS for Express
 app.use(cors({
-    origin: ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"],
+    origin: [
+        "http://8.148.30.163", 
+        "http://8.148.30.163:3001", 
+        "https://8.148.30.163", 
+        "https://8.148.30.163:3001",
+        "http://localhost:3000",
+        "https://localhost:3000"
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
