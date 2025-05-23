@@ -83,9 +83,9 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     const newSocket = io(serverUrl, {
       transports: ['polling'],
       withCredentials: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 3,
       reconnectionDelay: 1000,
-      timeout: 20000,
+      timeout: 10000,         // 减少连接超时
       forceNew: true,
       autoConnect: true
     });
@@ -135,9 +135,9 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     const newSocket = io(serverUrl, {
       transports: ['polling'],
       withCredentials: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 3,
       reconnectionDelay: 1000,
-      timeout: 20000,
+      timeout: 10000,         // 减少连接超时
       forceNew: true,
       autoConnect: true
     });
