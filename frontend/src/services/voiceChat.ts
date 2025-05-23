@@ -123,25 +123,23 @@ class VoiceChat {
       this.myPeer = new Peer(peerId, {
         config: {
           iceServers: [
-            // STUN servers for NAT discovery
-            { urls: 'stun:stun.miwifi.com:3478' },          // 小米
-            { urls: 'stun:stun.qq.com:3478' },              // 腾讯
-            { urls: 'stun:stun.hitv.com:3478' },            // 芒果 TV
-            { urls: 'stun:stun.chat.bilibili.com:3478' },   // B 站
-            { urls: 'stun:stun.cdnbye.com:3478' },          // CDNBye P2P
-            { urls: 'stun:stun.cloudflare.com:3478' },      // Cloudflare Anycast
-            
-            // TURN servers for relay connections (critical for cross-network audio)
+            // TURN servers for relay connections (TURN-only configuration)
             {
-              server: 'turn:212.50.245.45:3478',
+              urls: 'turn:212.50.245.45:3478',
               username: '475789141',
               credential: '544413857@@'
-            }, 
+            },
+            // Backup TURN server (you can add more TURN servers here)
+            {
+              urls: 'turn:212.50.245.45:3478?transport=tcp',
+              username: '475789141',
+              credential: '544413857@@'
+            }
           ],
           // Enable multiple candidates for better connectivity
           iceCandidatePoolSize: 10,
-          // Force relay through TURN servers for cross-network
-          iceTransportPolicy: 'all',
+          // Force relay through TURN servers only (no direct or STUN connections)
+          iceTransportPolicy: 'relay',
           // Ensure proper media flow
           bundlePolicy: 'max-bundle',
           rtcpMuxPolicy: 'require'
@@ -164,8 +162,9 @@ class VoiceChat {
         clearTimeout(connectionTimeout);
         
         console.log(`✅ PeerJS connection opened with ID: ${id}`);
-        console.log('🔧 TURN server configuration:', {
-          server: 'turn:212.50.245.45:3478', 
+        console.log('🔧 TURN-only server configuration:', {
+          urls: 'turn:212.50.245.45:3478',
+          transportPolicy: 'relay-only'
         });
         
         this.isVoiceActive = true;
