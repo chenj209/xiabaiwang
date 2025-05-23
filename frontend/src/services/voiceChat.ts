@@ -95,7 +95,17 @@ class VoiceChat {
       const peerId = `voice-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
       
       // Create PeerJS instance with minimal configuration for better performance
-      this.myPeer = new Peer(peerId);
+      this.myPeer = new Peer(peerId, {
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.miwifi.com:3478' },
+      { urls: 'stun:stun.chat.bilibili.com:3478' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
       
       // Set a timeout for connection
       const connectionTimeout = setTimeout(() => {
