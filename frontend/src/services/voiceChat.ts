@@ -79,7 +79,78 @@ class VoiceChat {
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log("Media access granted successfully");
+      console.log("✅ Media access granted successfully");
+      
+      // Validate and log audio tracks
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        console.error("❌ No audio tracks in local stream");
+        return null;
+      }
+      
+      audioTracks.forEach((track, index) => {
+        console.log(`🎤 Local audio track ${index}:`, {
+          label: track.label,
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted,
+          settings: track.getSettings(),
+          capabilities: track.getCapabilities()
+        });
+        
+        // Ensure track is enabled
+        track.enabled = true;
+        
+        // Monitor track state changes
+        track.addEventListener('ended', () => {
+          console.warn(`⚠️ Local audio track ${index} ended`);
+        });
+        
+        track.addEventListener('mute', () => {
+          console.warn(`⚠️ Local audio track ${index} muted`);
+        });
+        
+        track.addEventListener('unmute', () => {
+          console.log(`🔊 Local audio track ${index} unmuted`);
+        });
+      });
+      
+      // Create audio context to monitor microphone input levels
+      try {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        // Monitor audio levels periodically
+        const monitorLevels = () => {
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          
+          if (average > 0) {
+            console.log(`🎙️ Microphone input level: ${Math.round(average)}/255`);
+          } else {
+            console.warn(`⚠️ No microphone input detected (level: ${average})`);
+          }
+        };
+        
+        // Check levels every 5 seconds
+        const levelMonitor = setInterval(monitorLevels, 5000);
+        
+        // Clean up when stream ends
+        stream.addEventListener('inactive', () => {
+          clearInterval(levelMonitor);
+          audioContext.close();
+        });
+        
+      } catch (audioContextError) {
+        console.warn("⚠️ Could not create audio context for monitoring:", audioContextError);
+      }
+      
       return stream;
     } catch (err: any) {
       console.error("Failed to get user media:", err);
@@ -538,75 +609,174 @@ class VoiceChat {
         return;
       }
       
+      // Check and log audio track properties
+      audioTracks.forEach((track, index) => {
+        console.log(`Audio track ${index} for ${peerId}:`, {
+          label: track.label,
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        });
+        
+        // Ensure track is enabled and not muted
+        track.enabled = true;
+        if (track.muted) {
+          console.warn(`Audio track ${index} for ${peerId} is muted`);
+        }
+      });
+      
       // Create optimized audio element
       const audio = document.createElement('audio');
       audio.id = `voice-${peerId}`;
-      audio.srcObject = stream;
-      audio.autoplay = true;
       
       // Critical audio settings for cross-network playback
       audio.setAttribute('playsinline', '');
+      audio.setAttribute('autoplay', '');
       audio.muted = false;
       audio.volume = 1.0;
-      audio.controls = false; // Hide controls but keep for debugging if needed
+      audio.controls = false;
       
-      // Add event listeners to monitor audio playback
-      audio.addEventListener('loadedmetadata', () => {
-        console.log(`Audio metadata loaded for ${peerId}`);
-      });
+      // Set srcObject and handle the promise
+      audio.srcObject = stream;
       
-      audio.addEventListener('canplay', () => {
-        console.log(`Audio can play for ${peerId}`);
-        audio.play().catch(err => {
-          console.error(`Failed to play audio for ${peerId}:`, err);
-          // Try to trigger play again after user interaction
-          document.addEventListener('click', () => {
-            audio.play().catch(e => console.error('Still failed to play:', e));
-          }, { once: true });
-        });
-      });
+      // Create a promise-based approach for better audio handling
+      const initializeAudio = async () => {
+        try {
+          // Wait for metadata to load
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Metadata load timeout')), 5000);
+            audio.addEventListener('loadedmetadata', () => {
+              clearTimeout(timeout);
+              console.log(`✅ Audio metadata loaded for ${peerId}`);
+              resolve(undefined);
+            }, { once: true });
+            
+            audio.addEventListener('error', (e) => {
+              clearTimeout(timeout);
+              reject(e);
+            }, { once: true });
+          });
+          
+          // Try to play audio
+          console.log(`🎵 Attempting to play audio for ${peerId}...`);
+          await audio.play();
+          console.log(`🎉 Audio successfully started playing for ${peerId}`);
+          
+        } catch (err: any) {
+          console.warn(`⚠️ Autoplay blocked for ${peerId}:`, err.message);
+          
+          // Handle autoplay restrictions
+          if (err.name === 'NotAllowedError' || err.message.includes('play')) {
+            console.log(`🔒 Browser blocked autoplay for ${peerId}. Setting up user interaction handler...`);
+            
+            // Create a one-time click handler to enable audio
+            const enableAudio = async () => {
+              try {
+                console.log(`🖱️ User interaction detected, enabling audio for ${peerId}...`);
+                await audio.play();
+                console.log(`🎉 Audio enabled for ${peerId} after user interaction`);
+                document.removeEventListener('click', enableAudio);
+                document.removeEventListener('keydown', enableAudio);
+              } catch (playErr) {
+                console.error(`❌ Failed to enable audio for ${peerId}:`, playErr);
+              }
+            };
+            
+            // Listen for any user interaction
+            document.addEventListener('click', enableAudio, { once: true });
+            document.addEventListener('keydown', enableAudio, { once: true });
+            
+            // Show a subtle notification
+            console.log(`💡 Click anywhere to enable voice from ${peerId}`);
+          }
+        }
+      };
       
+      // Enhanced event listeners
       audio.addEventListener('playing', () => {
-        console.log(`Audio started playing for ${peerId}`);
+        console.log(`🎵 Audio started playing for ${peerId}`);
+      });
+      
+      audio.addEventListener('pause', () => {
+        console.log(`⏸️ Audio paused for ${peerId}`);
+        // Try to resume if it shouldn't be paused
+        if (!audio.ended) {
+          audio.play().catch(err => console.log(`Resume failed for ${peerId}:`, err));
+        }
       });
       
       audio.addEventListener('ended', () => {
-        console.log(`Audio ended for ${peerId}`);
+        console.log(`🔚 Audio ended for ${peerId}`);
       });
       
       audio.addEventListener('error', (e) => {
-        console.error(`Audio error for ${peerId}:`, e);
+        console.error(`❌ Audio error for ${peerId}:`, e);
       });
       
-      // Monitor audio stream activity
-      let lastBytesReceived = 0;
+      audio.addEventListener('stalled', () => {
+        console.warn(`🔄 Audio stalled for ${peerId}`);
+      });
+      
+      audio.addEventListener('waiting', () => {
+        console.log(`⏳ Audio waiting for data from ${peerId}`);
+      });
+      
+      // Monitor audio stream activity with better detection
       const streamMonitor = setInterval(() => {
         const audioTrack = audioTracks[0];
         if (audioTrack && audioTrack.readyState === 'live') {
-          // Check if audio is actually flowing
-          if (audio.currentTime > 0 || audio.duration > 0) {
-            console.log(`Audio active for ${peerId}, currentTime: ${audio.currentTime}`);
+          // Check multiple audio state indicators
+          const isPlaying = !audio.paused && !audio.ended && audio.readyState > 2;
+          const currentTime = audio.currentTime;
+          const duration = audio.duration;
+          
+          console.log(`🎶 Audio status for ${peerId}:`, {
+            isPlaying,
+            currentTime,
+            duration: isNaN(duration) ? 'unknown' : duration,
+            readyState: audio.readyState,
+            paused: audio.paused,
+            muted: audio.muted,
+            volume: audio.volume
+          });
+          
+          // Try to play if it's not playing but should be
+          if (!isPlaying && !audio.paused) {
+            console.log(`🔄 Attempting to restart audio for ${peerId}...`);
+            audio.play().catch(err => console.log(`Restart failed for ${peerId}:`, err));
           }
         } else {
-          console.warn(`Audio track not live for ${peerId}`);
+          console.warn(`⚠️ Audio track not live for ${peerId}, readyState:`, audioTrack?.readyState);
         }
-      }, 5000);
+      }, 3000);
       
       // Clean up monitor when audio is removed
-      audio.addEventListener('remove', () => {
+      const originalRemove = audio.remove.bind(audio);
+      audio.remove = () => {
         clearInterval(streamMonitor);
-      });
+        originalRemove();
+      };
       
-      // Hide the audio element but make it functional
-      audio.style.display = 'none';
+      // Make audio element visible for debugging if needed
+      audio.style.position = 'fixed';
+      audio.style.bottom = '10px';
+      audio.style.right = '10px';
+      audio.style.width = '200px';
+      audio.style.height = '30px';
+      audio.style.zIndex = '1000';
+      audio.style.opacity = '0.1'; // Almost invisible but can be seen for debugging
+      audio.style.pointerEvents = 'none';
       
-      // Add to DOM
+      // Add to DOM first
       document.body.appendChild(audio);
       
-      console.log(`Audio element created and added for ${peerId}`);
+      // Initialize audio playback
+      initializeAudio();
+      
+      console.log(`🎧 Audio element created and configured for ${peerId}`);
       
     } catch (err) {
-      console.error('Error creating audio element:', err);
+      console.error('❌ Error creating audio element:', err);
     }
   }
   
