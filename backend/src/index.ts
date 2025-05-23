@@ -1016,20 +1016,13 @@ io.on('connection', (socket) => {
 });
 
 const PORT = Number(process.env.PORT) || 3001;
-const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
 const HOST = '0.0.0.0';  // Listen on all interfaces
 
-// Add more detailed startup logging
-console.log(`Starting servers on ${HOST}`);
-console.log(`HTTP port: ${PORT}`);
-if (httpsServer) {
-    console.log(`HTTPS port: ${HTTPS_PORT}`);
-}
-console.log('CORS origins:', ["http://8.148.30.163", "http://8.148.30.163:3001", "https://8.148.30.163", "https://8.148.30.163:3443", "http://localhost:3000", "https://localhost:3000"]);
+console.log(`Starting server on ${HOST}:${PORT}`);
 
 // Start HTTP server
 httpServer.listen(PORT, HOST, () => {
-    console.log(`HTTP Server running on ${HOST}:${PORT}`);
+    console.log(`Server running on ${HOST}:${PORT}`);
     console.log('Available network interfaces:');
     const networkInterfaces = require('os').networkInterfaces();
     Object.keys(networkInterfaces).forEach((interfaceName) => {
@@ -1040,12 +1033,3 @@ httpServer.listen(PORT, HOST, () => {
         });
     });
 });
-
-// Start HTTPS server if available
-if (httpsServer) {
-    httpsServer.listen(HTTPS_PORT, HOST, () => {
-        console.log(`HTTPS Server running on ${HOST}:${HTTPS_PORT}`);
-    });
-} else {
-    console.log('No HTTPS server started (no SSL certificates found)');
-}

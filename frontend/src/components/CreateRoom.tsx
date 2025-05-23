@@ -10,13 +10,10 @@ interface CreateRoomProps {
 // Auto-detect server URL based on current protocol
 const getServerUrl = () => {
   const protocol = window.location.protocol;
-  const hostname = '8.148.30.163'; // Your server hostname
+  const hostname = window.location.hostname;
   
-  if (protocol === 'https:') {
-    return `https://${hostname}:3443`;
-  } else {
-    return `http://${hostname}:3001`;
-  }
+  // When using Nginx SSL proxy, we don't need different ports
+  return `${protocol}//${hostname}`;
 };
 
 const serverUrl = getServerUrl();
