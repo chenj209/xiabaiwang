@@ -292,34 +292,62 @@ io.on('connection', (socket) => {
         
         // 立即清理房间数据
         Object.entries(gameState.rooms).forEach(([roomId, room]) => {
-            if (room.players[0]?.id === socket.id) {
-                // Store closed room state
-                closedRooms[roomId] = {
-                    message: '房主已断开连接，房间已关闭',
-                    closedAt: Date.now()
-                };
+            const player = room.players.find(p => p.id === socket.id);
+            if (player) {
+                const playerName = player.name;
+                const isCreator = player.id === room.players[0]?.id;
                 
-                delete gameState.rooms[roomId];
-                io.to(roomId).emit('roomClosed', { 
-                    message: closedRooms[roomId].message,
-                    shouldRedirect: true
-                });
-                cleanupRoom(roomId);
-                broadcastRoomList();
-            } else {
-                const player = room.players.find(p => p.id === socket.id);
-                if (player) {
-                    room.players = room.players.filter(p => p.id !== socket.id);
-                    if (room.players.length === 0) {
-                        delete gameState.rooms[roomId];
-                        cleanupRoom(roomId);
-                    } else {
-                        io.to(roomId).emit('playerJoined', room);
+                console.log(`Disconnected player ${playerName} found in room ${roomId}`);
+                
+                // Remove player from room
+                room.players = room.players.filter(p => p.id !== socket.id);
+                
+                // Remove from voice chat if present
+                if (voiceParticipants[roomId]) {
+                    voiceParticipants[roomId].delete(socket.id);
+                    broadcastVoiceParticipants(roomId);
+                }
+                
+                if (isCreator || room.players.length === 0) {
+                    // Store closed room state
+                    closedRooms[roomId] = {
+                        message: isCreator ? `房主 ${playerName} 已断开连接，房间已关闭` : '所有玩家已离开，房间已关闭',
+                        closedAt: Date.now()
+                    };
+                    
+                    console.log(`Room ${roomId} closed due to disconnection: ${closedRooms[roomId].message}`);
+                    
+                    // Notify remaining players
+                    io.to(roomId).emit('roomClosed', { 
+                        message: closedRooms[roomId].message,
+                        shouldRedirect: isCreator
+                    });
+                    
+                    // Remove all sockets from room
+                    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+                    if (socketsInRoom) {
+                        socketsInRoom.forEach(socketId => {
+                            io.sockets.sockets.get(socketId)?.leave(roomId);
+                        });
                     }
-                    broadcastRoomList();
+                    
+                    delete gameState.rooms[roomId];
+                    cleanupRoom(roomId);
+                } else {
+                    // Notify remaining players of disconnection
+                    console.log(`Player ${playerName} disconnected from room ${roomId}, ${room.players.length} players remaining`);
+                    io.to(roomId).emit('playerLeft', {
+                        playerName: playerName,
+                        playerId: socket.id,
+                        room: room
+                    });
+                    io.to(roomId).emit('playerJoined', room);
                 }
             }
         });
+        
+        // Clean up player sessions
+        delete playerSessions[socket.id];
         
         // Handle voice chat cleanup on disconnect
         if (currentPlayerId && currentRoomId && voiceParticipants[currentRoomId]) {
@@ -329,6 +357,9 @@ io.on('connection', (socket) => {
             });
             broadcastVoiceParticipants(currentRoomId);
         }
+        
+        // Broadcast updated room list immediately
+        broadcastRoomList();
     };
 
     // Handle reconnection
@@ -465,33 +496,66 @@ io.on('connection', (socket) => {
         const { roomId, playerId } = data;
         const room = gameState.rooms[roomId];
         
+        console.log(`Player ${playerId} leaving room ${roomId}`);
+        
         if (room) {
+            const playerName = room.players.find(p => p.id === playerId)?.name || playerId;
             const isCreator = playerId === room.players[0]?.id;
+            
+            // Remove player from room
             room.players = room.players.filter(p => p.id !== playerId);
+            
+            // Remove from voice chat if present
+            if (voiceParticipants[roomId]) {
+                voiceParticipants[roomId].delete(playerId);
+                broadcastVoiceParticipants(roomId);
+            }
             
             if (isCreator || room.players.length === 0) {
                 // Store closed room state
                 closedRooms[roomId] = {
-                    message: isCreator ? '房主已离开，房间已关闭' : '所有玩家已离开，房间已关闭',
+                    message: isCreator ? `房主 ${playerName} 已离开，房间已关闭` : '所有玩家已离开，房间已关闭',
                     closedAt: Date.now()
                 };
                 
-                // Delete room and notify players
-                delete gameState.rooms[roomId];
+                console.log(`Room ${roomId} closed: ${closedRooms[roomId].message}`);
+                
+                // Notify all remaining players and then close
                 io.to(roomId).emit('roomClosed', { 
                     message: closedRooms[roomId].message,
                     shouldRedirect: isCreator
                 });
-                socket.leave(roomId);
+                
+                // Remove all sockets from room
+                const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+                if (socketsInRoom) {
+                    socketsInRoom.forEach(socketId => {
+                        io.sockets.sockets.get(socketId)?.leave(roomId);
+                    });
+                }
+                
+                // Delete room
+                delete gameState.rooms[roomId];
                 cleanupRoom(roomId);
             } else {
-                // Notify remaining players
+                // Notify remaining players of player leaving
+                console.log(`Player ${playerName} left room ${roomId}, ${room.players.length} players remaining`);
+                io.to(roomId).emit('playerLeft', {
+                    playerName: playerName,
+                    playerId: playerId,
+                    room: room
+                });
                 io.to(roomId).emit('playerJoined', room);
             }
             
             // Remove player session
             delete playerSessions[playerId];
+            
+            // Broadcast updated room list immediately
             broadcastRoomList();
+            
+            // Make sure the leaving player also leaves the socket room
+            socket.leave(roomId);
         }
     });
 

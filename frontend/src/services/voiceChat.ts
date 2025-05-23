@@ -124,40 +124,19 @@ class VoiceChat {
         config: {
           iceServers: [
             // STUN servers for NAT discovery
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            { urls: 'stun:stun.miwifi.com:3478' },
-            { urls: 'stun:stun.chat.bilibili.com:3478' },
+            { urls: 'stun:stun.miwifi.com:3478' },          // 小米
+            { urls: 'stun:stun.qq.com:3478' },              // 腾讯
+            { urls: 'stun:stun.hitv.com:3478' },            // 芒果 TV
+            { urls: 'stun:stun.chat.bilibili.com:3478' },   // B 站
+            { urls: 'stun:stun.cdnbye.com:3478' },          // CDNBye P2P
+            { urls: 'stun:stun.cloudflare.com:3478' },      // Cloudflare Anycast
             
             // TURN servers for relay connections (critical for cross-network audio)
             {
-              urls: 'turn:openrelay.metered.ca:80',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            // Additional TURN servers for better connectivity
-            {
-              urls: 'turn:relay.backups.cz',
-              username: 'webrtc',
-              credential: 'webrtc'
-            },
-            {
-              urls: 'turn:turn.bistri.com:80',
-              username: 'homeo',
-              credential: 'homeo'
-            }
+              urls: 'turn:8.148.30.163:3478',
+              username: 'turnusr',
+              credential: 'W!M/mg&GD-r}02Px6-7N'
+            }, 
           ],
           // Enable multiple candidates for better connectivity
           iceCandidatePoolSize: 10,

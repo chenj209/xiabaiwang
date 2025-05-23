@@ -843,6 +843,25 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       localStorage.setItem(`messages:${roomId}`, '[]');
     };
 
+    const handlePlayerLeft = (data: { playerName: string, playerId: string, room: Room }) => {
+      console.log('Player left:', data);
+      setRoom(data.room);
+      
+      // Update localStorage
+      localStorage.setItem(`room:${roomId}`, JSON.stringify(data.room));
+      
+      // Add a chat message about player leaving
+      const leaveMessage = {
+        id: Math.random().toString(36).substring(7),
+        sender: '系统',
+        content: `${data.playerName} 离开了房间`,
+        type: 'text' as const,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, leaveMessage]);
+    };
+
     const handleRoomClosed = (data: { message: string, shouldRedirect: boolean }) => {
       console.log('Room closed:', data);
       setRoomClosed(data);
@@ -916,6 +935,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     socket.on('playerJoined', handlePlayerJoined);
     socket.on('gameStarted', handleGameStarted);
     socket.on('nextGameStarted', handleNextGameStarted);
+    socket.on('playerLeft', handlePlayerLeft);
     socket.on('roomClosed', handleRoomClosed);
     socket.on('playerId', (id: string) => {
       console.log('Got player ID:', id);
@@ -984,6 +1004,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       socket.off('playerJoined', handlePlayerJoined);
       socket.off('gameStarted', handleGameStarted);
       socket.off('nextGameStarted', handleNextGameStarted);
+      socket.off('playerLeft', handlePlayerLeft);
       socket.off('showAnswer');
       socket.off('votingStarted');
       socket.off('voteResult');
