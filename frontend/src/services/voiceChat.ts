@@ -119,17 +119,56 @@ class VoiceChat {
       // Create a unique peer ID
       const peerId = `voice-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
       
-      // Create PeerJS instance with minimal configuration for better performance
+      // Create PeerJS instance with comprehensive STUN/TURN configuration for cross-network audio
       this.myPeer = new Peer(peerId, {
         config: {
           iceServers: [
+            // STUN servers for NAT discovery
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:stun.miwifi.com:3478' },
             { urls: 'stun:stun.chat.bilibili.com:3478' },
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
-        }
+            
+            // TURN servers for relay connections (critical for cross-network audio)
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            // Additional TURN servers for better connectivity
+            {
+              urls: 'turn:relay.backups.cz',
+              username: 'webrtc',
+              credential: 'webrtc'
+            },
+            {
+              urls: 'turn:turn.bistri.com:80',
+              username: 'homeo',
+              credential: 'homeo'
+            }
+          ],
+          // Enable multiple candidates for better connectivity
+          iceCandidatePoolSize: 10,
+          // Force relay through TURN servers for cross-network
+          iceTransportPolicy: 'all',
+          // Ensure proper media flow
+          bundlePolicy: 'max-bundle',
+          rtcpMuxPolicy: 'require'
+        },
+        // Enable debug for connection issues
+        debug: 1
       });
       
       // Set a timeout for connection
@@ -177,15 +216,38 @@ class VoiceChat {
           if (this.localStream) {
             call.answer(this.localStream);
             
+            // Monitor ICE connection state for debugging
+            if (call.peerConnection) {
+              call.peerConnection.oniceconnectionstatechange = () => {
+                console.log(`ICE connection state for incoming call: ${call.peerConnection?.iceConnectionState}`);
+                if (call.peerConnection?.iceConnectionState === 'failed') {
+                  console.error('ICE connection failed for incoming call');
+                }
+              };
+              
+              call.peerConnection.onicegatheringstatechange = () => {
+                console.log(`ICE gathering state for incoming call: ${call.peerConnection?.iceGatheringState}`);
+              };
+              
+              call.peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                  console.log(`ICE candidate for incoming call:`, event.candidate.type, event.candidate.protocol);
+                }
+              };
+            }
+            
             call.on('stream', (remoteStream) => {
+              console.log('Received stream from incoming call');
               this.createAudioElement(call.peer, remoteStream);
             });
             
             call.on('close', () => {
+              console.log('Incoming call closed');
               this.removeAudioElement(call.peer);
             });
             
-            call.on('error', () => {
+            call.on('error', (err) => {
+              console.error('Incoming call error:', err);
               this.removeAudioElement(call.peer);
             });
             
@@ -308,38 +370,141 @@ class VoiceChat {
   };
 
   private callPeer(peerId: string, retryCount = 0) {
+    if (!this.myPeer || !this.localStream || retryCount >= 3) {
+      return;
+    }
+    
     try {
-      if (!this.myPeer || !this.localStream) return;
-      
+      console.log(`Calling peer ${peerId}, attempt ${retryCount + 1}`);
       const call = this.myPeer.call(peerId, this.localStream);
       
-      // Handle stream from the called peer
+      if (!call) {
+        console.error("Failed to create call to peer:", peerId);
+        return;
+      }
+      
+      // Monitor connection state for audio transmission
+      let audioReceived = false;
+      const connectionMonitor = setInterval(() => {
+        if (call.peerConnection) {
+          const stats = call.peerConnection.getStats();
+          if (stats) {
+            stats.then((statsReport) => {
+              statsReport.forEach((stat) => {
+                if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
+                  if (stat.bytesReceived > 0) {
+                    audioReceived = true;
+                    console.log(`Audio bytes received from ${peerId}:`, stat.bytesReceived);
+                  }
+                }
+              });
+            });
+          }
+        }
+      }, 2000);
+      
+      // 设置连接超时
+      const callTimeout = setTimeout(() => {
+        console.log(`Call to ${peerId} timed out, attempting retry`);
+        clearInterval(connectionMonitor);
+        call.close();
+        this.connections.delete(peerId);
+        
+        // 重试连接
+        if (retryCount < 2) {
+          console.log(`Retrying connection to ${peerId} in ${2000 * (retryCount + 1)}ms`);
+          setTimeout(() => {
+            this.callPeer(peerId, retryCount + 1);
+          }, 2000 * (retryCount + 1));
+        }
+      }, 15000); // 15秒超时
+      
+      // Check for audio after connection established
+      const audioCheckTimeout = setTimeout(() => {
+        if (!audioReceived) {
+          console.warn(`No audio received from ${peerId}, connection may be through restricted NAT`);
+          // Don't close the call, but log the issue
+        }
+        clearInterval(connectionMonitor);
+      }, 10000);
+      
       call.on('stream', (remoteStream) => {
+        clearTimeout(callTimeout);
+        console.log(`Successfully received stream from peer ${peerId}`);
+        
+        // Monitor ICE connection state for outgoing calls
+        if (call.peerConnection) {
+          call.peerConnection.oniceconnectionstatechange = () => {
+            console.log(`ICE connection state with ${peerId}: ${call.peerConnection?.iceConnectionState}`);
+            if (call.peerConnection?.iceConnectionState === 'failed') {
+              console.error(`ICE connection failed with ${peerId}`);
+            } else if (call.peerConnection?.iceConnectionState === 'connected') {
+              console.log(`ICE connection established with ${peerId}`);
+            }
+          };
+          
+          call.peerConnection.onicegatheringstatechange = () => {
+            console.log(`ICE gathering state with ${peerId}: ${call.peerConnection?.iceGatheringState}`);
+          };
+          
+          call.peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              console.log(`ICE candidate with ${peerId}:`, event.candidate.type, event.candidate.protocol);
+              if (event.candidate.type === 'relay') {
+                console.log(`Using TURN relay for ${peerId} - good for cross-network!`);
+              }
+            }
+          };
+        }
+        
+        // Verify audio tracks
+        const audioTracks = remoteStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          console.log(`Audio tracks received from ${peerId}:`, audioTracks.length);
+          audioTracks.forEach((track, index) => {
+            console.log(`Audio track ${index}:`, track.label, 'enabled:', track.enabled);
+          });
+        } else {
+          console.warn(`No audio tracks in stream from ${peerId}`);
+        }
+        
         this.createAudioElement(peerId, remoteStream);
       });
       
-      // Handle call close
       call.on('close', () => {
+        clearTimeout(callTimeout);
+        clearTimeout(audioCheckTimeout);
+        clearInterval(connectionMonitor);
+        console.log(`Call with peer ${peerId} closed`);
         this.removeAudioElement(peerId);
+        this.connections.delete(peerId);
       });
       
-      // Handle call errors
       call.on('error', (err) => {
+        clearTimeout(callTimeout);
+        clearTimeout(audioCheckTimeout);
+        clearInterval(connectionMonitor);
+        console.error(`Call error with peer ${peerId}:`, err);
+        this.removeAudioElement(peerId);
+        this.connections.delete(peerId);
+        
+        // 如果是连接相关错误，尝试重连
         if (retryCount < 2) {
-          // Retry with exponential backoff
-          setTimeout(() => this.callPeer(peerId, retryCount + 1), 1000 * Math.pow(2, retryCount));
-        } else {
-          this.removeAudioElement(peerId);
+          console.log(`Retrying connection to ${peerId} in ${2000 * (retryCount + 1)}ms`);
+          setTimeout(() => {
+            this.callPeer(peerId, retryCount + 1);
+          }, 2000 * (retryCount + 1));
         }
       });
       
-      // Store the call
       this.connections.set(peerId, call);
       
-    } catch (err) {
+    } catch (error) {
+      console.error("Error calling peer:", error);
       if (retryCount < 2) {
-        // Retry with exponential backoff
-        setTimeout(() => this.callPeer(peerId, retryCount + 1), 1000 * Math.pow(2, retryCount));
+        setTimeout(() => {
+          this.callPeer(peerId, retryCount + 1);
+        }, 2000 * (retryCount + 1));
       }
     }
   }
@@ -349,21 +514,82 @@ class VoiceChat {
     this.removeAudioElement(peerId);
     
     try {
+      console.log(`Creating audio element for peer ${peerId}`);
+      
+      // Verify stream has audio tracks
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        console.error(`No audio tracks in stream from ${peerId}`);
+        return;
+      }
+      
       // Create optimized audio element
       const audio = document.createElement('audio');
       audio.id = `voice-${peerId}`;
       audio.srcObject = stream;
       audio.autoplay = true;
       
-      // Add additional attributes for better performance
+      // Critical audio settings for cross-network playback
       audio.setAttribute('playsinline', '');
       audio.muted = false;
+      audio.volume = 1.0;
+      audio.controls = false; // Hide controls but keep for debugging if needed
       
-      // Hide the audio element
+      // Add event listeners to monitor audio playback
+      audio.addEventListener('loadedmetadata', () => {
+        console.log(`Audio metadata loaded for ${peerId}`);
+      });
+      
+      audio.addEventListener('canplay', () => {
+        console.log(`Audio can play for ${peerId}`);
+        audio.play().catch(err => {
+          console.error(`Failed to play audio for ${peerId}:`, err);
+          // Try to trigger play again after user interaction
+          document.addEventListener('click', () => {
+            audio.play().catch(e => console.error('Still failed to play:', e));
+          }, { once: true });
+        });
+      });
+      
+      audio.addEventListener('playing', () => {
+        console.log(`Audio started playing for ${peerId}`);
+      });
+      
+      audio.addEventListener('ended', () => {
+        console.log(`Audio ended for ${peerId}`);
+      });
+      
+      audio.addEventListener('error', (e) => {
+        console.error(`Audio error for ${peerId}:`, e);
+      });
+      
+      // Monitor audio stream activity
+      let lastBytesReceived = 0;
+      const streamMonitor = setInterval(() => {
+        const audioTrack = audioTracks[0];
+        if (audioTrack && audioTrack.readyState === 'live') {
+          // Check if audio is actually flowing
+          if (audio.currentTime > 0 || audio.duration > 0) {
+            console.log(`Audio active for ${peerId}, currentTime: ${audio.currentTime}`);
+          }
+        } else {
+          console.warn(`Audio track not live for ${peerId}`);
+        }
+      }, 5000);
+      
+      // Clean up monitor when audio is removed
+      audio.addEventListener('remove', () => {
+        clearInterval(streamMonitor);
+      });
+      
+      // Hide the audio element but make it functional
       audio.style.display = 'none';
       
       // Add to DOM
       document.body.appendChild(audio);
+      
+      console.log(`Audio element created and added for ${peerId}`);
+      
     } catch (err) {
       console.error('Error creating audio element:', err);
     }
