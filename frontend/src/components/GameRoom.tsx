@@ -976,26 +976,30 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       
       // Rejoin room on reconnect
       if (roomId && playerName) {
+        console.log(`Rejoining room ${roomId} as ${playerName}`);
         socket.emit('joinRoom', { roomId, playerName });
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected');
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
       setIsConnected(false);
       
-      // Start reconnection process
-      if (reconnectAttempts < maxReconnectAttempts) {
-        setIsReconnecting(true);
-        setReconnectAttempts(prev => prev + 1);
-        setTimeout(() => {
-          if (socket.disconnected) {
-            console.log('Attempting to reconnect...');
-            socket.connect();
-          }
-        }, 1000 * Math.min(reconnectAttempts + 1, 5)); // Exponential backoff, max 5 seconds
-      } else {
-        setIsReconnecting(false);
+      // Start reconnection process only for certain disconnect reasons
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        console.log('Server disconnected, attempting to reconnect...');
+        if (reconnectAttempts < maxReconnectAttempts) {
+          setIsReconnecting(true);
+          setReconnectAttempts(prev => prev + 1);
+          setTimeout(() => {
+            if (socket.disconnected) {
+              console.log(`Reconnection attempt ${reconnectAttempts + 1}/${maxReconnectAttempts}`);
+              socket.connect();
+            }
+          }, 1000 * Math.min(reconnectAttempts + 1, 5)); // Exponential backoff, max 5 seconds
+        } else {
+          setIsReconnecting(false);
+        }
       }
     });
 

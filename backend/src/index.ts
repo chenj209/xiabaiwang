@@ -222,10 +222,14 @@ const getRoomListData = () => {
     return availableRooms;
 };
 
-// Optimize broadcast function
+// Optimize room list broadcasting with immediate cache invalidation
 const broadcastRoomList = () => {
     try {
+        // Clear cache immediately to force fresh data
+        roomCache.delete('roomList');
+        
         const availableRooms = getRoomListData();
+        console.log(`Broadcasting room list update: ${availableRooms.length} rooms`);
         io.emit('roomList', availableRooms);
     } catch (error) {
         console.error('Error in broadcastRoomList:', error);
@@ -405,8 +409,11 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', (data: { roomId: string, playerName: string }) => {
         const { roomId, playerName } = data;
         
+        console.log(`Player ${playerName} attempting to join room ${roomId}`);
+        
         // Check closed rooms first (most efficient check)
         if (closedRooms[roomId]) {
+            console.log(`Room ${roomId} is closed: ${closedRooms[roomId].message}`);
             socket.emit('roomClosed', {
                 message: closedRooms[roomId].message,
                 shouldRedirect: true
@@ -416,17 +423,20 @@ io.on('connection', (socket) => {
 
         const room = gameState.rooms[roomId];
         if (!room) {
+            console.log(`Room ${roomId} not found`);
             socket.emit('error', '房间不存在');
             return;
         }
 
         // Quick validation checks
         if (room.status !== 'waiting' && !room.players.find(p => p.name === playerName)) {
+            console.log(`Room ${roomId} game already started, cannot join`);
             socket.emit('error', '游戏已经开始，无法加入');
             return;
         }
         
         if (room.players.length >= room.maxPlayers) {
+            console.log(`Room ${roomId} is full`);
             socket.emit('error', '房间已满');
             return;
         }
@@ -434,6 +444,7 @@ io.on('connection', (socket) => {
         // Handle existing player
         const existingPlayer = room.players.find(p => p.name === playerName);
         if (existingPlayer) {
+            console.log(`Player ${playerName} reconnecting to room ${roomId}`);
             existingPlayer.id = socket.id;
             socket.join(roomId);
             socket.emit('playerId', playerName);
@@ -451,11 +462,13 @@ io.on('connection', (socket) => {
                 playerName: playerName
             };
             
+            // Immediately update room list
             broadcastRoomList();
             return;
         }
 
         // Add new player
+        console.log(`Adding new player ${playerName} to room ${roomId}`);
         const player: Player = {
             id: socket.id,
             name: playerName,
@@ -481,6 +494,8 @@ io.on('connection', (socket) => {
         
         socket.emit('playerId', playerName);
         io.to(roomId).emit('playerJoined', room);
+        
+        // Immediately update room list
         broadcastRoomList();
 
         // Store session
@@ -489,6 +504,8 @@ io.on('connection', (socket) => {
             roomId: roomId,
             playerName: playerName
         };
+        
+        console.log(`Player ${playerName} successfully joined room ${roomId}. Total players: ${room.players.length}`);
     });
 
     // 离开游戏

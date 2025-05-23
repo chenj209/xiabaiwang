@@ -163,6 +163,12 @@ class VoiceChat {
       this.myPeer.on('open', (id) => {
         clearTimeout(connectionTimeout);
         
+        console.log(`✅ PeerJS connection opened with ID: ${id}`);
+        console.log('🔧 TURN server configuration:', {
+          server: 'turn:8.148.30.163:3478',
+          username: 'turnusr'
+        });
+        
         this.isVoiceActive = true;
         this.onVoiceStateChange(true);
         this.reconnectAttempts = 0;
@@ -413,25 +419,57 @@ class VoiceChat {
         
         // Monitor ICE connection state for outgoing calls
         if (call.peerConnection) {
+          console.log(`🔗 Setting up ICE monitoring for call to ${peerId}`);
+          
           call.peerConnection.oniceconnectionstatechange = () => {
-            console.log(`ICE connection state with ${peerId}: ${call.peerConnection?.iceConnectionState}`);
-            if (call.peerConnection?.iceConnectionState === 'failed') {
-              console.error(`ICE connection failed with ${peerId}`);
-            } else if (call.peerConnection?.iceConnectionState === 'connected') {
-              console.log(`ICE connection established with ${peerId}`);
+            const state = call.peerConnection?.iceConnectionState;
+            console.log(`🧊 ICE connection state with ${peerId}: ${state}`);
+            
+            if (state === 'failed') {
+              console.error(`❌ ICE connection failed with ${peerId}`);
+            } else if (state === 'connected') {
+              console.log(`✅ ICE connection established with ${peerId}`);
+            } else if (state === 'checking') {
+              console.log(`🔍 ICE connectivity checks in progress with ${peerId}`);
+            } else if (state === 'completed') {
+              console.log(`🎉 ICE connection completed with ${peerId}`);
             }
           };
           
           call.peerConnection.onicegatheringstatechange = () => {
-            console.log(`ICE gathering state with ${peerId}: ${call.peerConnection?.iceGatheringState}`);
+            const state = call.peerConnection?.iceGatheringState;
+            console.log(`📡 ICE gathering state with ${peerId}: ${state}`);
           };
           
           call.peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-              console.log(`ICE candidate with ${peerId}:`, event.candidate.type, event.candidate.protocol);
-              if (event.candidate.type === 'relay') {
-                console.log(`Using TURN relay for ${peerId} - good for cross-network!`);
+              const candidate = event.candidate;
+              console.log(`🎯 ICE candidate for ${peerId}:`, {
+                type: candidate.type,
+                protocol: candidate.protocol,
+                address: candidate.address,
+                port: candidate.port,
+                foundation: candidate.foundation
+              });
+              
+              if (candidate.type === 'relay') {
+                console.log(`🔄 TURN relay candidate found for ${peerId} - excellent for cross-network!`, {
+                  address: candidate.address,
+                  port: candidate.port
+                });
+              } else if (candidate.type === 'srflx') {
+                console.log(`🌐 STUN server-reflexive candidate for ${peerId}`, {
+                  address: candidate.address,
+                  port: candidate.port
+                });
+              } else if (candidate.type === 'host') {
+                console.log(`🏠 Host candidate for ${peerId}`, {
+                  address: candidate.address,
+                  port: candidate.port
+                });
               }
+            } else {
+              console.log(`🏁 ICE candidate gathering completed for ${peerId}`);
             }
           };
         }

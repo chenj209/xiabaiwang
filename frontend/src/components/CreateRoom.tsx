@@ -192,16 +192,16 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
     }
   }, [activeTab, socket?.connected]);
 
-  // Add auto-refresh for room list
+  // Add auto-refresh for room list with more frequent updates
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
     
     if (socket?.connected && activeTab === 1) {
-      // Refresh room list every 5 seconds
+      // More frequent refresh for better real-time updates
       intervalId = setInterval(() => {
         console.log('Auto-refreshing room list');
         socket.emit('getRooms');
-      }, 5000);
+      }, 2000); // Reduced from 5 seconds to 2 seconds
     }
 
     return () => {
