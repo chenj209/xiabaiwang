@@ -60,7 +60,7 @@ interface Room {
 
 // Use the current window location to determine the backend URL
 const backendUrl = window.location.protocol === 'https:' 
-  ? `https://${window.location.hostname}:3001`
+  ? `https://${window.location.hostname}:3443`
   : `http://${window.location.hostname}:3001`;
 
 // Add this type definition at the top of the file after the imports

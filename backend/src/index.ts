@@ -10,6 +10,25 @@ import path from 'path';
 const app = express();
 const httpServer = createServer(app);
 
+// Create HTTPS server if SSL certificates are available
+let httpsServer: any = null;
+const sslKeyPath = path.join(__dirname, '../ssl/server.key');
+const sslCertPath = path.join(__dirname, '../ssl/server.crt');
+
+if (fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)) {
+    try {
+        const privateKey = fs.readFileSync(sslKeyPath, 'utf8');
+        const certificate = fs.readFileSync(sslCertPath, 'utf8');
+        const credentials = { key: privateKey, cert: certificate };
+        httpsServer = createHttpsServer(credentials, app);
+        console.log('SSL certificates found, HTTPS server will be created');
+    } catch (error) {
+        console.log('SSL certificates found but invalid, falling back to HTTP only:', error);
+    }
+} else {
+    console.log('No SSL certificates found, running HTTP only');
+}
+
 // Add player session store
 const playerSessions: { [key: string]: { playerId: string, roomId: string, playerName: string } } = {};
 
@@ -58,7 +77,7 @@ const io = new Server(httpServer, {
             "http://8.148.30.163", 
             "http://8.148.30.163:3001", 
             "https://8.148.30.163", 
-            "https://8.148.30.163:3001",
+            "https://8.148.30.163:3443",
             "http://localhost:3000",
             "https://localhost:3000"
         ],
@@ -75,6 +94,14 @@ const io = new Server(httpServer, {
     maxHttpBufferSize: 1e8
 });
 
+// Attach to HTTPS server if available
+if (httpsServer) {
+    io.attach(httpsServer);
+    console.log('Socket.IO attached to both HTTP and HTTPS servers');
+} else {
+    console.log('Socket.IO attached to HTTP server only');
+}
+
 // Add debug logging
 io.engine.on("connection_error", (err) => {
     console.log('Connection error:', err);
@@ -90,7 +117,7 @@ app.use(cors({
         "http://8.148.30.163", 
         "http://8.148.30.163:3001", 
         "https://8.148.30.163", 
-        "https://8.148.30.163:3001",
+        "https://8.148.30.163:3443",
         "http://localhost:3000",
         "https://localhost:3000"
     ],
@@ -989,14 +1016,20 @@ io.on('connection', (socket) => {
 });
 
 const PORT = Number(process.env.PORT) || 3001;
+const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
 const HOST = '0.0.0.0';  // Listen on all interfaces
 
 // Add more detailed startup logging
-console.log(`Starting server on ${HOST}:${PORT}`);
-console.log('CORS origins:', ["http://8.148.30.163", "http://8.148.30.163:3001", "http://localhost:3000"]);
+console.log(`Starting servers on ${HOST}`);
+console.log(`HTTP port: ${PORT}`);
+if (httpsServer) {
+    console.log(`HTTPS port: ${HTTPS_PORT}`);
+}
+console.log('CORS origins:', ["http://8.148.30.163", "http://8.148.30.163:3001", "https://8.148.30.163", "https://8.148.30.163:3443", "http://localhost:3000", "https://localhost:3000"]);
 
+// Start HTTP server
 httpServer.listen(PORT, HOST, () => {
-    console.log(`Server running on ${HOST}:${PORT}`);
+    console.log(`HTTP Server running on ${HOST}:${PORT}`);
     console.log('Available network interfaces:');
     const networkInterfaces = require('os').networkInterfaces();
     Object.keys(networkInterfaces).forEach((interfaceName) => {
@@ -1007,3 +1040,12 @@ httpServer.listen(PORT, HOST, () => {
         });
     });
 });
+
+// Start HTTPS server if available
+if (httpsServer) {
+    httpsServer.listen(HTTPS_PORT, HOST, () => {
+        console.log(`HTTPS Server running on ${HOST}:${HTTPS_PORT}`);
+    });
+} else {
+    console.log('No HTTPS server started (no SSL certificates found)');
+}
