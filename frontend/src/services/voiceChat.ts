@@ -13,6 +13,7 @@ class VoiceChat {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectTimer: number | null = null;
+  private hasUserInteracted = false; // Track if user has interacted
 
   init(socket: Socket, roomId: string, myId: string) {
     this.socket = socket;
@@ -22,6 +23,42 @@ class VoiceChat {
     // Set up signaling event listeners
     socket.on('user-joined-voice', this.handleUserJoinedVoice);
     socket.on('user-left-voice', this.handleUserLeftVoice);
+    
+    // Set up global user interaction handler for audio
+    this.setupGlobalAudioEnablement();
+  }
+
+  private setupGlobalAudioEnablement() {
+    if (this.hasUserInteracted) return;
+    
+    const enableAllAudio = async () => {
+      if (this.hasUserInteracted) return;
+      
+      console.log('🖱️ User interaction detected - enabling all voice chat audio...');
+      this.hasUserInteracted = true;
+      
+      // Enable all existing audio elements
+      document.querySelectorAll('[id^="voice-"]').forEach((audioEl) => {
+        const audio = audioEl as HTMLAudioElement;
+        audio.muted = false;
+        audio.volume = 1.0;
+        audio.play().catch(err => 
+          console.log(`Could not play audio for ${audio.id}:`, err.message)
+        );
+      });
+      
+      // Remove listeners after first interaction
+      document.removeEventListener('click', enableAllAudio);
+      document.removeEventListener('keydown', enableAllAudio);
+      document.removeEventListener('touchstart', enableAllAudio);
+    };
+    
+    // Listen for any user interaction
+    document.addEventListener('click', enableAllAudio, { once: true });
+    document.addEventListener('keydown', enableAllAudio, { once: true });
+    document.addEventListener('touchstart', enableAllAudio, { once: true });
+    
+    console.log('🔒 Global audio enablement set up - click anywhere to enable voice chat');
   }
 
   cleanup() {
@@ -609,7 +646,7 @@ class VoiceChat {
         return;
       }
       
-      // Check and fix audio track properties
+      // Check and fix audio track properties with aggressive unmuting
       audioTracks.forEach((track, index) => {
         console.log(`Audio track ${index} for ${peerId}:`, {
           label: track.label,
@@ -618,23 +655,46 @@ class VoiceChat {
           muted: track.muted
         });
         
-        // Ensure track is enabled and not muted
+        // Ensure track is enabled
         track.enabled = true;
         
-        // CRITICAL FIX: Handle muted tracks
+        // CRITICAL FIX: Aggressively handle muted tracks
         if (track.muted) {
-          console.warn(`⚠️ Audio track ${index} for ${peerId} is muted - this will prevent audio playback`);
-          console.log(`🔧 Note: Track muting is usually caused by the remote peer's microphone being muted or browser policies`);
+          console.error(`🔇 CRITICAL: Audio track ${index} for ${peerId} is MUTED - attempting to fix...`);
+          
+          // Attempt 1: Try to clone the track (sometimes fixes muting issues)
+          try {
+            const clonedTrack = track.clone();
+            if (!clonedTrack.muted) {
+              console.log(`🔧 Successfully cloned unmuted track for ${peerId}`);
+              // Replace the track in the stream
+              stream.removeTrack(track);
+              stream.addTrack(clonedTrack);
+              audioTracks[index] = clonedTrack;
+            }
+          } catch (cloneErr) {
+            console.warn(`⚠️ Could not clone track for ${peerId}:`, cloneErr);
+          }
         }
         
-        // Add track event listeners for real-time monitoring
+        // Add track event listeners for real-time monitoring and fixing
         track.addEventListener('mute', () => {
-          console.warn(`🔇 Audio track ${index} for ${peerId} became muted`);
+          console.warn(`🔇 Audio track ${index} for ${peerId} became muted - attempting to fix...`);
+          this.attemptTrackUnmute(peerId, track, stream);
         });
         
         track.addEventListener('unmute', () => {
-          console.log(`🔊 Audio track ${index} for ${peerId} became unmuted`);
+          console.log(`🔊 Audio track ${index} for ${peerId} became unmuted - audio should work now!`);
+          // Try to play audio again if it was paused due to muting
+          if (audio.paused) {
+            audio.play().catch(err => console.warn(`Could not restart audio after unmute:`, err));
+          }
         });
+        
+        // IMPORTANT: Log guidance for muted tracks
+        if (track.muted) {
+          console.log(`🚨 SOLUTION: The remote user needs to click on their page to enable their microphone, OR you need to click to enable audio playback`);
+        }
         
         track.addEventListener('ended', () => {
           console.warn(`⚠️ Audio track ${index} for ${peerId} ended`);
@@ -875,6 +935,36 @@ class VoiceChat {
     if (audioElement) {
       audioElement.remove();
     }
+  }
+
+  private attemptTrackUnmute(peerId: string, track: MediaStreamTrack, stream: MediaStream) {
+    console.log(`🔧 Attempting to fix muted track for ${peerId}...`);
+    
+    // Request user interaction to enable audio playback
+    const enableAudioAfterInteraction = async () => {
+      try {
+        console.log(`🖱️ User interaction detected, attempting to enable audio for ${peerId}...`);
+        
+        // Force audio element settings
+        track.enabled = true;
+        
+        console.log(`🎉 Audio enablement attempt completed for ${peerId}`);
+        
+        // Remove event listeners
+        document.removeEventListener('click', enableAudioAfterInteraction);
+        document.removeEventListener('keydown', enableAudioAfterInteraction);
+        
+      } catch (err) {
+        console.error(`❌ Failed to enable audio after interaction for ${peerId}:`, err);
+      }
+    };
+    
+    // Set up user interaction listeners
+    document.addEventListener('click', enableAudioAfterInteraction, { once: true });
+    document.addEventListener('keydown', enableAudioAfterInteraction, { once: true });
+    
+    console.log(`💡 IMPORTANT: Click anywhere on the page to enable audio from ${peerId}`);
+    console.log(`🔧 Note: Track muting is often caused by browser autoplay restrictions`);
   }
 }
 
