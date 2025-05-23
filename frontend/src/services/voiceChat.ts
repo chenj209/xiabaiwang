@@ -609,7 +609,7 @@ class VoiceChat {
         return;
       }
       
-      // Check and log audio track properties
+      // Check and fix audio track properties
       audioTracks.forEach((track, index) => {
         console.log(`Audio track ${index} for ${peerId}:`, {
           label: track.label,
@@ -620,9 +620,25 @@ class VoiceChat {
         
         // Ensure track is enabled and not muted
         track.enabled = true;
+        
+        // CRITICAL FIX: Handle muted tracks
         if (track.muted) {
-          console.warn(`Audio track ${index} for ${peerId} is muted`);
+          console.warn(`⚠️ Audio track ${index} for ${peerId} is muted - this will prevent audio playback`);
+          console.log(`🔧 Note: Track muting is usually caused by the remote peer's microphone being muted or browser policies`);
         }
+        
+        // Add track event listeners for real-time monitoring
+        track.addEventListener('mute', () => {
+          console.warn(`🔇 Audio track ${index} for ${peerId} became muted`);
+        });
+        
+        track.addEventListener('unmute', () => {
+          console.log(`🔊 Audio track ${index} for ${peerId} became unmuted`);
+        });
+        
+        track.addEventListener('ended', () => {
+          console.warn(`⚠️ Audio track ${index} for ${peerId} ended`);
+        });
       });
       
       // Create optimized audio element
@@ -721,41 +737,115 @@ class VoiceChat {
         console.log(`⏳ Audio waiting for data from ${peerId}`);
       });
       
-      // Monitor audio stream activity with better detection
+      // Monitor audio stream activity with better live stream detection
       const streamMonitor = setInterval(() => {
         const audioTrack = audioTracks[0];
+        
         if (audioTrack && audioTrack.readyState === 'live') {
-          // Check multiple audio state indicators
+          // For LIVE streams, currentTime often stays at 0, which is NORMAL
           const isPlaying = !audio.paused && !audio.ended && audio.readyState > 2;
           const currentTime = audio.currentTime;
           const duration = audio.duration;
           
-          console.log(`🎶 Audio status for ${peerId}:`, {
+          // Enhanced diagnostics for live streams
+          const streamStatus = {
             isPlaying,
             currentTime,
-            duration: isNaN(duration) ? 'unknown' : duration,
+            duration: isNaN(duration) ? 'live-stream' : duration,
             readyState: audio.readyState,
             paused: audio.paused,
             muted: audio.muted,
-            volume: audio.volume
-          });
+            volume: audio.volume,
+            trackMuted: audioTrack.muted, // CRITICAL: Check if the track itself is muted
+            trackEnabled: audioTrack.enabled,
+            trackReadyState: audioTrack.readyState
+          };
+          
+          // Log status with appropriate indicators
+          if (audioTrack.muted) {
+            console.error(`🔇 CRITICAL: Audio track for ${peerId} is MUTED - no sound will be heard!`, streamStatus);
+            console.log(`💡 TIP: This usually means the remote user's microphone is muted or there's a connection issue`);
+          } else if (isPlaying) {
+            console.log(`✅ Live audio stream active for ${peerId}:`, streamStatus);
+            console.log(`📝 Note: currentTime=0 is NORMAL for live audio streams`);
+          } else {
+            console.warn(`⚠️ Audio element not playing for ${peerId}:`, streamStatus);
+          }
           
           // Try to play if it's not playing but should be
-          if (!isPlaying && !audio.paused) {
+          if (!isPlaying && !audio.paused && !audioTrack.muted) {
             console.log(`🔄 Attempting to restart audio for ${peerId}...`);
             audio.play().catch(err => console.log(`Restart failed for ${peerId}:`, err));
           }
+          
+          // Check for potential issues
+          if (audio.muted && !audioTrack.muted) {
+            console.warn(`🔧 Audio element is muted but track is not - fixing...`);
+            audio.muted = false;
+          }
+          
         } else {
           console.warn(`⚠️ Audio track not live for ${peerId}, readyState:`, audioTrack?.readyState);
+          if (audioTrack) {
+            console.log(`🔍 Track details:`, {
+              readyState: audioTrack.readyState,
+              enabled: audioTrack.enabled,
+              muted: audioTrack.muted,
+              id: audioTrack.id,
+              label: audioTrack.label
+            });
+          }
         }
       }, 3000);
       
-      // Clean up monitor when audio is removed
-      const originalRemove = audio.remove.bind(audio);
-      audio.remove = () => {
-        clearInterval(streamMonitor);
-        originalRemove();
-      };
+      // Add audio analysis to detect actual audio data flow
+      try {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        // Monitor actual audio data flow
+        const audioDataMonitor = setInterval(() => {
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          const maxLevel = Math.max(...Array.from(dataArray));
+          
+          if (average > 0 || maxLevel > 0) {
+            console.log(`🎵 Audio data detected from ${peerId}: avg=${Math.round(average)}, max=${maxLevel}`);
+          } else {
+            console.warn(`🔇 No audio data from ${peerId} (avg=${average}, max=${maxLevel}) - track may be silent or muted`);
+          }
+          
+          // If we detect audio data but track appears muted, there might be a WebRTC issue
+          if ((average > 0 || maxLevel > 0) && audioTracks[0]?.muted) {
+            console.warn(`🚨 ANOMALY: Audio data detected but track is marked as muted for ${peerId}`);
+          }
+        }, 5000);
+        
+        // Clean up audio analysis when stream ends
+        const originalRemove = audio.remove.bind(audio);
+        audio.remove = () => {
+          clearInterval(streamMonitor);
+          clearInterval(audioDataMonitor);
+          audioContext.close();
+          originalRemove();
+        };
+        
+      } catch (audioContextError) {
+        console.warn(`⚠️ Could not create audio analysis for ${peerId}:`, audioContextError);
+        
+        // Fallback cleanup without audio context
+        const originalRemove = audio.remove.bind(audio);
+        audio.remove = () => {
+          clearInterval(streamMonitor);
+          originalRemove();
+        };
+      }
       
       // Make audio element visible for debugging if needed
       audio.style.position = 'fixed';
