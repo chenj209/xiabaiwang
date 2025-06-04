@@ -1,0 +1,8 @@
+node_modules
+images
+
+# SSL certificates
+backend/ssl/
+*.key
+*.crt
+*.pem
