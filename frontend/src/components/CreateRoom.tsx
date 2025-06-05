@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, TextField, Button, Typography, Tabs, Tab, Alert, Accordion, AccordionSummary, AccordionDetails, Slider, List, ListItem, ListItemText, ListItemSecondaryAction, Paper, Chip, IconButton, Tooltip, Avatar, Stack } from '@mui/material';
 import { io, Socket } from 'socket.io-client';
 import { PeopleAlt } from '@mui/icons-material';
+import {  FormControlLabel, Switch } from '@mui/material';
 
 interface CreateRoomProps {
   onRoomCreated: (roomId: string, playerName: string, socket: Socket) => void;
@@ -16,7 +17,7 @@ const getServerUrl = () => {
   return `${protocol}//${hostname}`;
 };
 
-const serverUrl = getServerUrl();
+const serverUrl = 'http://localhost:3001';
 console.log('Using server URL:', serverUrl);
 
 interface RoomInfo {
@@ -60,6 +61,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [availableRooms, setAvailableRooms] = useState<RoomInfo[]>([]);
+  const [autoNext, setAutoNext] = useState(true);
 
   // Check for existing room on component mount and auto-reconnect
   useEffect(() => {
@@ -148,7 +150,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
       console.log('Socket connected, proceeding with room action');
       if (isNewRoom) {
         console.log('Creating new room with settings:', { maxPlayers, totalRounds, pointsToWin, answerViewTime });
-        newSocket.emit('createRoom', { maxPlayers, totalRounds, pointsToWin, answerViewTime });
+        newSocket.emit('createRoom', { maxPlayers, totalRounds, pointsToWin, answerViewTime, autoNext });
       } else {
         console.log('Joining existing room:', roomId);
         newSocket.emit('joinRoom', { roomId, playerName });
@@ -446,6 +448,16 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onRoomCreated }) => {
                     valueLabelDisplay="auto"
                   />
                 </Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoNext}
+                      onChange={(e) => setAutoNext(e.target.checked)}
+                    />
+                  }
+                  label="投票后自动切换下一题"
+                  sx={{ mt: 2, display: 'block' }}
+                />
               </Box>
             </AccordionDetails>
           </Accordion>

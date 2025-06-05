@@ -13,6 +13,7 @@ export interface Room {
     status: 'waiting' | 'playing' | 'voting' | 'ended' | 'completed';
     currentQuestion?: Question;
     round: number;
+    autoNext: boolean;
     totalRounds: number;
     pointsToWin: number;
     answerViewTime: number; // in seconds

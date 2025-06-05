@@ -59,7 +59,7 @@ interface Room {
 }
 
 // Use the current window location to determine the backend URL
-const backendUrl = `${window.location.protocol}//${window.location.hostname}`;
+const backendUrl = `${window.location.protocol}//${window.location.hostname}:3001`;
 
 // Add this type definition at the top of the file after the imports
 type GamePhase = 'waiting' | 'playing' | 'voting' | 'ended' | 'completed';
@@ -495,6 +495,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
     honestPlayerScore?: number;
     gameWinner?: Player;
     isGameOver: boolean;
+    autoNext: boolean;
   } | null>(() => {
     const savedVoteResult = localStorage.getItem(`voteResult:${roomId}`);
     return savedVoteResult ? JSON.parse(savedVoteResult) : null;
@@ -772,7 +773,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
 
   const handleVote = useCallback(() => {
     if (honestVoteTarget) {
-      socket.emit('vote', { 
+      socket.emit('submitVote', { 
         roomId, 
         honestTargetId: honestVoteTarget,
         liarTargetId: liarVoteTarget || undefined
@@ -781,7 +782,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   }, [socket, roomId, honestVoteTarget, liarVoteTarget]);
 
   const handleNextGame = useCallback(() => {
-    socket.emit('nextGame', roomId);
+    socket.emit('nextRound', roomId);
   }, [socket, roomId]);
 
   // Add message handler
@@ -961,6 +962,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
       honestPlayerScore?: number;
       gameWinner?: Player;
       isGameOver: boolean;
+      autoNext: boolean;
     }) => {
       setVoteResult(result);
       setPhase(result.isGameOver ? 'completed' : 'ended');
@@ -1077,6 +1079,29 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
   const RoleDisplay = () => {
     return null; // Removed role display component
   };
+
+  // 自动切换下一题倒计时
+  const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+
+  // 结算区倒计时逻辑
+  useEffect(() => {
+    if (phase === 'ended' && voteResult?.autoNext && room?.answerViewTime) {
+      setAutoNextCountdown(room.answerViewTime);
+      const timer = setInterval(() => {
+        setAutoNextCountdown(prev => {
+          if (prev === null) return null;
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      setAutoNextCountdown(null);
+    }
+  }, [phase, voteResult, room?.answerViewTime]);
 
   // Add early return for room closure display
   if (roomClosed) {
@@ -1411,7 +1436,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
           )}
 
           {(phase === 'ended' || phase === 'completed') && voteResult && (
-            <Box>
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
               <Typography variant="h6" color="primary" gutterBottom>投票结果：</Typography>
               <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
                 <Typography>
@@ -1433,9 +1458,69 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                     }
                   </Typography>
                 )}
+                {/* 房主结算界面：autoNext=true 显示按钮和倒计时 */}
+                {isRoomCreator && phase === 'ended' && voteResult.autoNext && (
+                  <>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleNextGame}
+                      sx={{ mt: 2, width: '100%' }}
+                    >
+                      下一题
+                    </Button>
+                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                      <Typography color="text.secondary">
+                        等待{autoNextCountdown !== null ? autoNextCountdown : room.answerViewTime}秒后自动进入下一题
+                      </Typography>
+                    </Box>
+                  </>
+                )}
+                {/* 非房主结算界面：autoNext=true 显示等待和倒计时 */}
+                {!isRoomCreator && phase === 'ended' && voteResult.autoNext && (
+                  <Box sx={{ mt: 2, textAlign: 'center' }}>
+                    <Typography color="text.secondary">
+                      等待房主开启下一题
+                    </Typography>
+                    <Typography color="text.secondary" sx={{ mt: 1 }}>
+                      等待{autoNextCountdown !== null ? autoNextCountdown : room.answerViewTime}秒后自动进入下一题
+                    </Typography>
+                  </Box>
+                )}
+                {/* 房主结算界面：autoNext=false 只显示按钮 */}
+                {isRoomCreator && phase === 'ended' && !voteResult.autoNext && (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleNextGame}
+                    sx={{ mt: 2, width: '100%' }}
+                  >
+                    下一题
+                  </Button>
+                )}
+                {/* 非房主结算界面：autoNext=false 只显示等待 */}
+                {!isRoomCreator && phase === 'ended' && !voteResult.autoNext && (
+                  <Box sx={{ mt: 2, textAlign: 'center' }}>
+                    <Typography color="text.secondary">
+                      等待房主开启下一题
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
 
               <Typography variant="h6" color="primary" gutterBottom>本轮得分：</Typography>
+              {/* 答案图片展示区 */}
+              {((phase === 'ended' || phase === 'completed') && room.currentQuestion?.answer) && (
+                <Box sx={{ mb: 2, textAlign: 'center' }}>
+                  <Typography variant="subtitle1" color="primary" sx={{ mb: 1 }}>本题答案：</Typography>
+                  <img
+                    src={backendUrl + room.currentQuestion.answer}
+                    alt="答案图片"
+                    style={{ maxWidth: '100%', maxHeight: 300, display: 'block', margin: '0 auto' }}
+                    loading="lazy"
+                  />
+                </Box>
+              )}
               <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
                 {room.players.map(player => {
                   const isSmartPlayer = player.id === voteResult.voterId;
@@ -1615,34 +1700,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomId, playerName, socket }) => {
                   }
                 </Paper>
               )}
-
-              {/* Add Next Question Button for Host */}
-              {isRoomCreator && phase === 'ended' && !voteResult.isGameOver && (
-                <Box sx={{ mt: 3, textAlign: 'center' }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    size="large"
-                    onClick={handleNextGame}
-                    startIcon={<PlayArrow />}
-                    sx={{ 
-                      py: 1.5,
-                      px: 4,
-                      borderRadius: 2,
-                      boxShadow: 3,
-                      transition: 'transform 0.2s',
-                      '&:hover': {
-                        transform: 'scale(1.05)',
-                        boxShadow: 4
-                      }
-                    }}
-                  >
-                    进入下一题
-                  </Button>
-                </Box>
-              )}
-        </Box>
-      )}
+            </Box>
+          )}
         </Paper>
 
         {/* Player List */}

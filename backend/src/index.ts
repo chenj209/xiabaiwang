@@ -387,25 +387,27 @@ io.on('connection', (socket) => {
     });
 
     // 创建房间
-    socket.on('createRoom', (data: { maxPlayers: number, totalRounds: number, pointsToWin: number, answerViewTime: number }) => {
-        console.log('Creating room with data:', data);
-        const roomId = Math.random().toString(36).substring(7);
-        const room: Room = {
+    socket.on('createRoom', (data: { 
+        maxPlayers: number, 
+        totalRounds: number, 
+        pointsToWin: number, 
+        answerViewTime: number,
+        autoNext: boolean 
+    }) => {
+        const roomId = generateRoomId();
+        gameState.rooms[roomId] = {
             id: roomId,
             players: [],
             maxPlayers: data.maxPlayers,
+            status: 'waiting',
+            round: 0,
             totalRounds: data.totalRounds,
             pointsToWin: data.pointsToWin,
             answerViewTime: data.answerViewTime,
-            status: 'waiting',
-            round: 0,
-            currentSmartIndex: 0 // Track the index of the current smart player
+            autoNext: data.autoNext,
+            currentSmartIndex: 0
         };
-        gameState.rooms[roomId] = room;
-        socket.join(roomId);
-        console.log('Room created:', room);
-        socket.emit('roomCreated', { id: roomId, room });
-        broadcastRoomList(); // Broadcast updated room list
+        socket.emit('roomCreated', { id: roomId });
     });
 
     // 加入房间
@@ -599,6 +601,7 @@ io.on('connection', (socket) => {
 
     // Add timeout for 老实人
     let honestPlayerTimeouts: { [roomId: string]: NodeJS.Timeout } = {};
+    let autoNextTimeouts: { [roomId: string]: NodeJS.Timeout } = {};
 
     // Add honest player button handler
     socket.on('useHonestButton', (roomId: string) => {
@@ -758,9 +761,19 @@ io.on('connection', (socket) => {
 
     // Clean up timeout when game ends or room closes
     const cleanupRoom = (roomId: string) => {
+        // 清除所有与该房间相关的定时器
         if (honestPlayerTimeouts[roomId]) {
             clearTimeout(honestPlayerTimeouts[roomId]);
             delete honestPlayerTimeouts[roomId];
+        }
+        if (autoNextTimeouts[roomId]) {
+            clearTimeout(autoNextTimeouts[roomId]);
+            delete autoNextTimeouts[roomId];
+        }
+        // 清除房间数据
+        const room = gameState.rooms[roomId];
+        if (room) {
+            room.answerReveal = { showing: false, endTime: 0 };
         }
     };
 
@@ -783,19 +796,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Fix the automatic next game logic in vote handler
-    socket.on('vote', (data: { roomId: string, honestTargetId: string, liarTargetId?: string }) => {
-        const { roomId, honestTargetId, liarTargetId } = data;
+    // 生成房间ID的函数
+    const generateRoomId = () => Math.random().toString(36).substring(7);
+
+    socket.on('submitVote', ({ roomId, honestTargetId, liarTargetId }: { roomId: string; honestTargetId: string; liarTargetId?: string }) => {
         const room = gameState.rooms[roomId];
-        if (room && room.status === 'voting') {
-            const smartPlayer = room.players.find(p => p.role === 'smart');
+        if (room) {
+            const smartPlayer = room.players.find(p => p.id === socket.id);
             const honestPlayer = room.players.find(p => p.role === 'honest');
-            if (smartPlayer && smartPlayer.id === socket.id) {
-                room.voteResult = { 
-                    voterId: socket.id, 
-                    honestTargetId,
-                    liarTargetId 
-                };
+            
+            if (smartPlayer && honestPlayer) {
                 room.status = 'ended';
                 
                 // Award points for correct identifications
@@ -804,13 +814,13 @@ io.on('connection', (socket) => {
                 
                 // Points for 大聪明
                 if (isHonestCorrect) {
-                    pointsEarned += 2; // 2 points for correctly identifying 老实人
+                    pointsEarned += 2;
                 }
                 
                 if (liarTargetId) {
                     const targetPlayer = room.players.find(p => p.id === liarTargetId);
                     if (targetPlayer?.role === 'liar') {
-                        pointsEarned += 1; // 1 point for correctly identifying 瞎掰人
+                        pointsEarned += 1;
                     }
                 }
                 
@@ -818,14 +828,14 @@ io.on('connection', (socket) => {
 
                 // Points for 老实人
                 if (!isHonestCorrect && honestPlayer) {
-                    honestPlayer.score += 3; // 3 points for not being discovered
+                    honestPlayer.score += 3;
                 }
 
                 // Points for 瞎掰人
                 if (!isHonestCorrect) {
                     room.players
                         .filter(p => p.role === 'liar')
-                        .forEach(p => p.score += 1); // 1 point for successful misdirection
+                        .forEach(p => p.score += 1);
                 }
 
                 // Check victory conditions
@@ -834,7 +844,6 @@ io.on('connection', (socket) => {
                 const isGameOver = hasWinner || isLastRound;
 
                 if (isGameOver) {
-                    // Find player with highest score
                     const winner = room.players.reduce((prev, current) => 
                         (current.score > prev.score) ? current : prev
                     );
@@ -853,126 +862,90 @@ io.on('connection', (socket) => {
                     smartPlayerScore: smartPlayer.score,
                     honestPlayerScore: honestPlayer?.score,
                     gameWinner: room.gameWinner,
-                    isGameOver
+                    isGameOver,
+                    autoNext: room.autoNext
                 });
 
-                // Automatically start next game after 5 seconds if game is not over
-                if (!isGameOver) {
-                    setTimeout(() => {
-                        // 重置房间状态
-                        room.status = 'playing';
-                        room.round += 1;
-                        room.voteResult = undefined;
-                        room.answerReveal = undefined;
-
-                        // Update the smart player index for the next round (safely handle undefined)
-                        room.currentSmartIndex = ((room.currentSmartIndex ?? 0) + 1) % room.players.length;
-
-                        // 重置玩家状态
-                        room.players.forEach(player => {
-                            player.hasUsedHonestButton = false;
-                        });
-
-                        // 随机选择新的图片题目
-                        const files = Array.from(imageCache.keys());
-                        if (files.length === 0) {
-                            io.to(roomId).emit('error', '没有可用的题目图片');
-                            return;
+                // 清理旧的 autoNextTimeout
+                if (autoNextTimeouts[roomId]) {
+                    clearTimeout(autoNextTimeouts[roomId]);
+                    delete autoNextTimeouts[roomId];
+                }
+                // 只有在 autoNext 为 true 且游戏未结束时才自动进入下一题
+                if (!isGameOver && room.autoNext === true) {
+                    autoNextTimeouts[roomId] = setTimeout(() => {
+                        const currentRoom = gameState.rooms[roomId];
+                        if (currentRoom && currentRoom.autoNext === true) {
+                            startNextRound(roomId);
                         }
-                        const randomFile = files[Math.floor(Math.random() * files.length)];
-                        const question = {
-                            id: randomFile,
-                            content: `/images/face/${randomFile}`,
-                            answer: `/images/back/${randomFile}`
-                        };
-                        room.currentQuestion = question;
-
-                        // Sequential role assignment for smart player
-                        const smartIndex = room.currentSmartIndex;
-                        let honestIndex;
-                        do {
-                            honestIndex = Math.floor(Math.random() * room.players.length);
-                        } while (honestIndex === smartIndex);
-
-                        // Reset all roles to liar first
-                        room.players.forEach(p => p.role = 'liar');
-                        
-                        // Assign smart and honest roles
-                        room.players[smartIndex].role = 'smart';
-                        room.players[honestIndex].role = 'honest';
-
-                        // Setup timeout for honest player
-                        setupHonestPlayerTimeout(roomId);
-
-                        // 通知所有玩家新游戏开始
-                        io.to(roomId).emit('nextGameStarted', {
-                            room,
-                            question
-                        });
-                    }, 5000);
+                    }, room.answerViewTime * 1000);
                 }
             }
         }
     });
 
-    // Fix nextGame to use the tracked smart player index
-    socket.on('nextGame', (roomId: string) => {
-        const room = gameState.rooms[roomId];
-        if (room) {
-            // 重置房间状态
-            room.status = 'playing';
-            room.round += 1;
-            room.voteResult = undefined;
-            room.answerReveal = undefined;
-
-            // Update the smart player index for the next round (safely handle undefined)
-            room.currentSmartIndex = ((room.currentSmartIndex ?? 0) + 1) % room.players.length;
-
-            // 重置玩家状态
-            room.players.forEach(player => {
-                player.hasUsedHonestButton = false;
-            });
-
-            // 随机选择新的图片题目
-            const faceDir = path.join(__dirname, '../../images/face');
-            const backDir = path.join(__dirname, '../../images/back');
-            const files = fs.readdirSync(faceDir).filter(f => f.endsWith('.png'));
-            if (files.length === 0) {
-                socket.emit('error', '没有可用的题目图片');
-                return;
-            }
-            const randomFile = files[Math.floor(Math.random() * files.length)];
-            const question = {
-                id: randomFile,
-                content: `/images/face/${randomFile}`,
-                answer: `/images/back/${randomFile}`
-            };
-            room.currentQuestion = question;
-
-            // Use the tracked smart player index
-            const smartIndex = room.currentSmartIndex;
-            let honestIndex;
-            do {
-                honestIndex = Math.floor(Math.random() * room.players.length);
-            } while (honestIndex === smartIndex);
-
-            // Reset all roles to liar first
-            room.players.forEach(p => p.role = 'liar');
-            
-            // Assign smart and honest roles
-            room.players[smartIndex].role = 'smart';
-            room.players[honestIndex].role = 'honest';
-
-            // Setup timeout for honest player
-            setupHonestPlayerTimeout(roomId);
-
-            // 通知所有玩家新游戏开始
-            io.to(roomId).emit('nextGameStarted', {
-                room,
-                question
-            });
-        }
+    // 添加手动切换下一题的处理
+    socket.on('nextRound', (roomId: string) => {
+        startNextRound(roomId);
     });
+
+    // 抽取开始下一轮的逻辑为单独函数
+    const startNextRound = (roomId: string) => {
+        const room = gameState.rooms[roomId];
+        if (!room) return;
+
+        // 重置房间状态
+        room.status = 'playing';
+        room.round += 1;
+        room.voteResult = undefined;
+        room.answerReveal = undefined;
+
+        // Update the smart player index
+        room.currentSmartIndex = (room.currentSmartIndex + 1) % room.players.length;
+
+        // 重置玩家状态
+        room.players.forEach(player => {
+            player.hasUsedHonestButton = false;
+        });
+
+        // 随机选择新的图片题目
+        const files = Array.from(imageCache.keys());
+        if (files.length === 0) {
+            io.to(roomId).emit('error', '没有可用的题目图片');
+            return;
+        }
+        
+        const randomFile = files[Math.floor(Math.random() * files.length)];
+        const question = {
+            id: randomFile,
+            content: `/images/face/${randomFile}`,
+            answer: `/images/back/${randomFile}`
+        };
+        room.currentQuestion = question;
+
+        // Sequential role assignment for smart player
+        const smartIndex = room.currentSmartIndex;
+        let honestIndex;
+        do {
+            honestIndex = Math.floor(Math.random() * room.players.length);
+        } while (honestIndex === smartIndex);
+
+        // Reset all roles to liar first
+        room.players.forEach(p => p.role = 'liar');
+        
+        // Assign smart and honest roles
+        room.players[smartIndex].role = 'smart';
+        room.players[honestIndex].role = 'honest';
+
+        // Setup timeout for honest player
+        setupHonestPlayerTimeout(roomId);
+
+        // 通知所有玩家新游戏开始
+        io.to(roomId).emit('nextGameStarted', {
+            room,
+            question
+        });
+    };
 
     // Add this new event handler after the connection handler
     socket.on('getRooms', () => {
